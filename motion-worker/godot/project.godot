@@ -1,0 +1,17 @@
+; Sample protocol worker. Production auto-rigging is intentionally not claimed.
+config_version=5
+
+[application]
+config/name="Gen Video Tool Motion Worker"
+run/main_scene="res://worker.tscn"
+
+[display]
+window/size/viewport_width=1080
+window/size/viewport_height=1920
+window/size/window_width_override=540
+window/size/window_height_override=960
+
+[rendering]
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"
+environment/defaults/default_clear_color=Color(0, 0, 0, 0)

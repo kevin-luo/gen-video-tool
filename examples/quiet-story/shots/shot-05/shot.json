@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 2,
+  "id": "shot-05",
+  "name": "她终于能关灯",
+  "durationFrames": 150,
+  "recipeId": "quiet-story",
+  "energy": "quiet",
+  "layers": [
+    {"id": "kitchen", "role": "background", "assetPath": "assets/backgrounds/mother-kitchen-night.png", "depth": 0.03, "visible": true, "transform": {"x": 0, "y": 0, "scaleX": 1.08, "scaleY": 1.08, "rotation": 0, "opacity": 1, "anchorX": 0.5, "anchorY": 0.5}},
+    {"id": "phone", "role": "prop", "assetPath": "assets/props/phone-glow.png", "depth": 0.68, "visible": true, "transform": {"x": -210, "y": 220, "scaleX": 0.2, "scaleY": 0.2, "rotation": -8, "opacity": 0.8, "anchorX": 0.5, "anchorY": 0.5}}
+  ],
+  "actors": [
+    {"id": "mother-light", "mode": "rigid", "sourcePath": "assets/characters/mother/mother-lamp-off.png", "zIndex": 12, "motion": ["shadow-settle"], "transform": {"x": 140, "y": 230, "scaleX": 0.9, "scaleY": 0.9, "rotation": 0, "opacity": 1, "anchorX": 0.5, "anchorY": 0.5}}
+  ],
+  "motionEvents": [],
+  "transition": {"type": "hard-cut", "durationFrames": 0}
+}

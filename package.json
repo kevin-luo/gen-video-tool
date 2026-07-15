@@ -1,0 +1,58 @@
+{
+  "name": "gen-video-tool",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local-first desktop composer for validated paper-collage asset packs",
+  "type": "module",
+  "main": "./out/main/index.js",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "electron-vite dev",
+    "dev:renderer": "vite --config vite.renderer.config.ts",
+    "build:desktop": "electron-vite build",
+    "preview:desktop": "electron-vite preview",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "validate:examples": "tsx scripts/validate-examples.ts",
+    "render:football": "tsx scripts/render-example.ts football-history",
+    "render:story": "tsx scripts/render-example.ts quiet-story",
+    "qa:frames": "tsx scripts/make-contact-sheets.ts",
+    "qa": "npm run typecheck && npm run test && npm run validate:examples"
+  },
+  "dependencies": {
+    "@remotion/player": "4.0.489",
+    "jszip": "3.10.1",
+    "lucide-react": "1.24.0",
+    "music-metadata": "11.14.0",
+    "pixi.js": "8.19.0",
+    "react": "19.2.7",
+    "react-dom": "19.2.7",
+    "remotion": "4.0.489",
+    "sharp": "0.35.3",
+    "zod": "4.4.3",
+    "zustand": "5.0.14"
+  },
+  "devDependencies": {
+    "@remotion/bundler": "4.0.489",
+    "@remotion/renderer": "4.0.489",
+    "@types/node": "26.1.1",
+    "@types/react": "19.2.17",
+    "@types/react-dom": "19.2.3",
+    "@vitejs/plugin-react": "5.2.0",
+    "electron": "43.1.1",
+    "electron-vite": "5.0.0",
+    "playwright": "1.61.1",
+    "tsx": "4.23.1",
+    "typescript": "5.9.3",
+    "vite": "7.3.6",
+    "vitest": "4.1.10"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "license": "MIT"
+}

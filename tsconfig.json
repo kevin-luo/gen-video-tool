@@ -1,0 +1,41 @@
+{
+  "compilerOptions": {
+    "target": "ES2023",
+    "useDefineForClassFields": true,
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "allowJs": false,
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "types": ["node", "vite/client"],
+    "paths": {
+      "@gen-video-tool/schema": ["./packages/schema/src/index.ts"],
+      "@gen-video-tool/asset-pack": ["./packages/asset-pack/src/index.ts"],
+      "@gen-video-tool/motion-core": ["./packages/motion-core/src/index.ts"],
+      "@gen-video-tool/remotion-engine": ["./packages/remotion-engine/src/index.ts"],
+      "@gen-video-tool/render-service": ["./packages/render-service/src/index.ts"],
+      "@gen-video-tool/worker-client": ["./packages/worker-client/src/index.ts"]
+    }
+  },
+  "include": [
+    "apps/**/*.ts",
+    "apps/**/*.tsx",
+    "packages/**/*.ts",
+    "packages/**/*.tsx",
+    "scripts/**/*.ts",
+    "tests/**/*.ts",
+    "electron.vite.config.ts",
+    "vite.renderer.config.ts",
+    "vitest.config.ts"
+  ]
+}

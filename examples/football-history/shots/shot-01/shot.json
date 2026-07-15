@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 2,
+  "id": "shot-01",
+  "name": "十二码不是答案",
+  "durationFrames": 96,
+  "recipeId": "hero-assemble",
+  "energy": "punchy",
+  "camera": {"kind": "push", "strength": 0.45},
+  "layers": [
+    {"id": "stadium", "role": "background", "assetPath": "assets/backgrounds/stadium.png", "depth": 0.08, "visible": true, "transform": {"x": 0, "y": 0, "scaleX": 1.08, "scaleY": 1.08, "rotation": 0, "opacity": 1, "anchorX": 0.5, "anchorY": 0.5}},
+    {"id": "ball", "role": "prop", "assetPath": "assets/props/ball.svg", "depth": 0.74, "visible": true, "transform": {"x": 0, "y": 150, "scaleX": 0.48, "scaleY": 0.48, "rotation": -7, "opacity": 1, "anchorX": 0.5, "anchorY": 0.5}}
+  ],
+  "actors": [
+    {"id": "kicker", "mode": "rigid", "sourcePath": "assets/characters/kicker/character.png", "zIndex": 14, "motion": ["enter-down", "shadow-settle"], "transform": {"x": 0, "y": 585, "scaleX": 0.95, "scaleY": 0.95, "rotation": 0, "opacity": 1, "anchorX": 0.5, "anchorY": 0.5}},
+    {"id": "keeper", "mode": "rigid", "sourcePath": "assets/characters/keeper/character.png", "zIndex": 8, "motion": ["scale-in"], "transform": {"x": 0, "y": -350, "scaleX": 0.68, "scaleY": 0.68, "rotation": 0, "opacity": 1, "anchorX": 0.5, "anchorY": 0.5}}
+  ],
+  "motionEvents": [],
+  "title": {"text": "最狠的不是十二码", "language": "zh-CN", "maxLines": 2, "safeArea": 0.08, "paperBackground": true, "rotation": -1.5},
+  "transition": {"type": "tear-cover", "durationFrames": 12}
+}

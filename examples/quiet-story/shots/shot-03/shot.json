@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 2,
+  "id": "shot-03",
+  "name": "屏幕终于亮了一下",
+  "durationFrames": 126,
+  "recipeId": "detail-reveal",
+  "energy": "quiet",
+  "layers": [
+    {"id": "kitchen", "role": "background", "assetPath": "assets/backgrounds/mother-kitchen-night.png", "depth": 0.03, "visible": true, "transform": {"x": 90, "y": 20, "scaleX": 1.26, "scaleY": 1.26, "rotation": 0, "opacity": 1, "anchorX": 0.5, "anchorY": 0.5}},
+    {"id": "phone", "role": "prop", "assetPath": "assets/props/phone-glow.png", "depth": 0.82, "visible": true, "transform": {"x": -250, "y": 170, "scaleX": 0.34, "scaleY": 0.34, "rotation": -7, "opacity": 1, "anchorX": 0.5, "anchorY": 0.5}}
+  ],
+  "actors": [
+    {"id": "mother-reach", "mode": "rigid", "sourcePath": "assets/characters/mother/mother-reach-phone.png", "zIndex": 15, "motion": ["scale-in", "shadow-settle"], "transform": {"x": 120, "y": 250, "scaleX": 0.92, "scaleY": 0.92, "rotation": 0, "opacity": 1, "anchorX": 0.5, "anchorY": 0.5}}
+  ],
+  "motionEvents": [{"id": "phone-pulse", "targetRole": "prop", "animation": "halftonePulse", "startFrame": 62, "durationFrames": 12}],
+  "transition": {"type": "flash-frame", "durationFrames": 6}
+}

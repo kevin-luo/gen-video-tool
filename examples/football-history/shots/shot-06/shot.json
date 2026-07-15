@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 2,
+  "id": "shot-06",
+  "name": "门将先动就输掉答案",
+  "durationFrames": 105,
+  "recipeId": "comparison-split",
+  "energy": "punchy",
+  "layers": [
+    {"id": "stadium", "role": "background", "assetPath": "assets/backgrounds/stadium.png", "depth": 0.05, "visible": true, "transform": {"x": 0, "y": -120, "scaleX": 1.34, "scaleY": 1.34, "rotation": 0, "opacity": 1, "anchorX": 0.5, "anchorY": 0.5}},
+    {"id": "ball", "role": "prop", "assetPath": "assets/props/ball.svg", "depth": 0.76, "visible": true, "transform": {"x": 210, "y": 120, "scaleX": 0.38, "scaleY": 0.38, "rotation": 14, "opacity": 1, "anchorX": 0.5, "anchorY": 0.5}}
+  ],
+  "actors": [
+    {"id": "keeper-cut", "mode": "pose-cut", "zIndex": 20, "poses": [
+      {"id": "ready", "sourcePath": "assets/characters/keeper/pose-ready.png", "fullFigure": true},
+      {"id": "dive", "sourcePath": "assets/characters/keeper/pose-dive.png", "fullFigure": true}
+    ], "initialPoseId": "ready", "changes": [{"frame": 52, "poseId": "dive"}], "transition": {"type": "flash-frame", "durationFrames": 7}, "transform": {"x": 0, "y": -210, "scaleX": 1.02, "scaleY": 1.02, "rotation": 0, "opacity": 1, "anchorX": 0.5, "anchorY": 0.5}},
+    {"id": "kicker-follow", "mode": "rigid", "sourcePath": "assets/characters/kicker/pose-follow.png", "zIndex": 14, "motion": [], "transform": {"x": -160, "y": 600, "scaleX": 0.82, "scaleY": 0.82, "rotation": 0, "opacity": 1, "anchorX": 0.5, "anchorY": 0.5}}
+  ],
+  "motionEvents": [{"id": "decision-flash", "targetRole": "subject", "animation": "misregistrationFlash", "startFrame": 50, "durationFrames": 7}],
+  "title": {"text": "他先动，答案就出现", "language": "zh-CN", "maxLines": 2, "safeArea": 0.08, "paperBackground": true, "rotation": 1.5},
+  "transition": {"type": "flash-frame", "durationFrames": 7}
+}

@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 2,
+  "id": "shot-05",
+  "name": "最后一帧才出脚",
+  "durationFrames": 120,
+  "recipeId": "number-impact",
+  "energy": "punchy",
+  "layers": [
+    {"id": "stadium", "role": "background", "assetPath": "assets/backgrounds/stadium.png", "depth": 0.05, "visible": true, "transform": {"x": 0, "y": 0, "scaleX": 1.14, "scaleY": 1.14, "rotation": 0, "opacity": 1, "anchorX": 0.5, "anchorY": 0.5}},
+    {"id": "ball", "role": "prop", "assetPath": "assets/props/ball.svg", "depth": 0.8, "visible": true, "transform": {"x": 20, "y": 270, "scaleX": 0.45, "scaleY": 0.45, "rotation": -8, "opacity": 1, "anchorX": 0.5, "anchorY": 0.5}},
+    {"id": "pose-cover", "role": "foreground", "text": "pose cover", "depth": 1, "visible": true}
+  ],
+  "actors": [
+    {"id": "kicker-cut", "mode": "pose-cut", "zIndex": 14, "poses": [
+      {"id": "run", "sourcePath": "assets/characters/kicker/pose-run.png", "fullFigure": true},
+      {"id": "kick", "sourcePath": "assets/characters/kicker/pose-kick.png", "fullFigure": true}
+    ], "initialPoseId": "run", "changes": [{"frame": 64, "poseId": "kick"}], "transition": {"type": "paper-cover", "durationFrames": 12, "coverLayerId": "pose-cover"}, "transform": {"x": -80, "y": 550, "scaleX": 0.94, "scaleY": 0.94, "rotation": 0, "opacity": 1, "anchorX": 0.5, "anchorY": 0.5}},
+    {"id": "keeper", "mode": "rigid", "sourcePath": "assets/characters/keeper/pose-ready.png", "zIndex": 8, "motion": [], "transform": {"x": 0, "y": -355, "scaleX": 0.7, "scaleY": 0.7, "rotation": 0, "opacity": 1, "anchorX": 0.5, "anchorY": 0.5}}
+  ],
+  "motionEvents": [{"id": "cover-switch", "targetRole": "foreground", "animation": "foregroundWipe", "startFrame": 58, "durationFrames": 12}],
+  "title": {"text": "脚腕：最后一帧", "language": "zh-CN", "maxLines": 2, "safeArea": 0.08, "paperBackground": true, "rotation": -1},
+  "transition": {"type": "tear-cover", "durationFrames": 12}
+}

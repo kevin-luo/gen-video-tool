@@ -1,0 +1,12 @@
+{
+  "name": "@gen-video-tool/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./out/main/index.js",
+  "scripts": {
+    "dev": "electron-vite dev --config electron.vite.config.ts",
+    "build": "electron-vite build --config electron.vite.config.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json"
+  }
+}

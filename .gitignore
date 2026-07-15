@@ -1,0 +1,17 @@
+node_modules/
+out/
+dist/
+release/
+coverage/
+output/
+public/runtime/
+tmp/
+*.log
+.DS_Store
+Thumbs.db
+*.local
+.env
+.env.*
+!.env.example
+examples/**/.staging/
+examples/**/.autosave/

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Compose Paper Video"
+  short_description: "Build validated animated paper-collage video packs"
+  default_prompt: "Use $compose-paper-video to turn my approved narration into a validated paper-animation asset pack and local render."

@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 2,
+  "id": "shot-07",
+  "name": "互相骗到最后一帧",
+  "durationFrames": 129,
+  "recipeId": "paper-stack",
+  "energy": "balanced",
+  "layers": [
+    {"id": "stadium", "role": "background", "assetPath": "assets/backgrounds/stadium.png", "depth": 0.04, "visible": true, "transform": {"x": 0, "y": 0, "scaleX": 1.08, "scaleY": 1.08, "rotation": 0, "opacity": 1, "anchorX": 0.5, "anchorY": 0.5}},
+    {"id": "paper", "role": "overlay", "assetPath": "assets/props/newspaper.svg", "depth": 0.18, "visible": true, "transform": {"x": -210, "y": -390, "scaleX": 0.42, "scaleY": 0.42, "rotation": -7, "opacity": 0.76, "anchorX": 0.5, "anchorY": 0.5}},
+    {"id": "ball", "role": "prop", "assetPath": "assets/props/ball.svg", "depth": 0.72, "visible": true, "transform": {"x": 260, "y": 140, "scaleX": 0.5, "scaleY": 0.5, "rotation": 22, "opacity": 1, "anchorX": 0.5, "anchorY": 0.5}}
+  ],
+  "actors": [
+    {"id": "keeper-floor", "mode": "rigid", "sourcePath": "assets/characters/keeper/pose-floor.png", "zIndex": 10, "motion": ["shadow-settle"], "transform": {"x": 170, "y": -200, "scaleX": 0.78, "scaleY": 0.78, "rotation": 0, "opacity": 1, "anchorX": 0.5, "anchorY": 0.5}},
+    {"id": "kicker-follow", "mode": "rigid", "sourcePath": "assets/characters/kicker/pose-follow.png", "zIndex": 18, "motion": [], "transform": {"x": -170, "y": 560, "scaleX": 0.88, "scaleY": 0.88, "rotation": 0, "opacity": 1, "anchorX": 0.5, "anchorY": 0.5}}
+  ],
+  "motionEvents": [],
+  "title": {"text": "互相骗到最后一帧", "language": "zh-CN", "maxLines": 2, "safeArea": 0.08, "paperBackground": true, "rotation": -1},
+  "transition": {"type": "hard-cut", "durationFrames": 0}
+}
