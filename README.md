@@ -4,6 +4,13 @@
 
 ![编辑器概念图](docs/design/editor-concept.png)
 
+## 实际效果
+
+![Mesh Puppet 绑定校正与透明动作预览](docs/design/mesh-puppet-correction.png)
+
+- [足球 Mesh Puppet 成片演示（MP4，含旁白、无 BGM、无烧录字幕）](docs/media/football-mesh-puppet-demo.mp4)
+- [守门员透明人物动作演示（VP9 Alpha WebM）](docs/media/mesh-puppet-alpha-preview.webm)
+
 ## 已实现
 
 - Electron + React 桌面工作台：首页、安全导入检查、三栏编辑器、故事节拍时间线和真实导出进度。
