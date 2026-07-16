@@ -24,7 +24,8 @@
       "@gen-video-tool/motion-core": ["./packages/motion-core/src/index.ts"],
       "@gen-video-tool/remotion-engine": ["./packages/remotion-engine/src/index.ts"],
       "@gen-video-tool/render-service": ["./packages/render-service/src/index.ts"],
-      "@gen-video-tool/worker-client": ["./packages/worker-client/src/index.ts"]
+      "@gen-video-tool/worker-client": ["./packages/worker-client/src/index.ts"],
+      "@gen-video-tool/template-market": ["./packages/template-market/src/index.ts"]
     }
   },
   "include": [

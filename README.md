@@ -8,11 +8,14 @@
 
 - Electron + React 桌面工作台：首页、安全导入检查、三栏编辑器、故事节拍时间线和真实导出进度。
 - ZIP/目录导入门禁：路径穿越、绝对路径、大小写/Unicode 冲突、符号链接、ZIP bomb、重复 ID、丢失引用、图像/Alpha、音频和 SRT 检查。
-- 三种人物协议：Rigid Actor、Mesh Puppet 协议边界、Pose Cut 完整人物姿态切换。
+- 三种人物协议：Rigid Actor、Godot Mesh Puppet、Pose Cut 完整人物姿态切换。
 - 8 个确定性 Motion Recipes；背景、主体、道具、前景按深度独立视差，标题保持低/零视差。
 - 编辑器预览与最终渲染共用 Remotion 运动求值器。
 - 本地 Remotion + FFmpeg：H.264 MP4、旁白混合、独立 SRT、起/中/末抽帧 QA；默认无 BGM、无烧录字幕。
-- Godot worker 协议、可执行文件探测和诚实的示例 worker；未伪装“自动蒙皮已可商用”。
+- 本地 Godot Worker：读取完整人物 PNG 与 `rig.json`，构建 `Skeleton2D + Bone2D + Polygon2D` 连续网格，加载动作模板并输出透明 PNG 序列、VP9 Alpha WebM 或 ProRes 4444 MOV。
+- Electron Mesh Puppet 校正台：完整人物纹理上的双端骨骼拖拽、方向键微调、当前未保存绑定的透明动作预览、只读提示与 `rig.json` 回写。
+- Phase 4 首版：Alpha 轮廓启发式自动绑定、可选 RIFE 帧插值 Worker、批量导出报告、本地模板目录与安装。
+- 镜头门禁把“镜头语言 + 世界知识 + 物理/流程逻辑”写进结构化数据；足球示例保证球在触球前静止、球离脚后门将才启动。
 - 足球与安静故事两套可验证、可渲染示例。
 - 可安装技能：[`compose-paper-video`](skills/compose-paper-video/SKILL.md)。
 
@@ -39,6 +42,9 @@ npm run dev:renderer
 ```bash
 npm run render:football
 npm run render:story
+npm run render:mesh-preview
+npm run render:mesh-webm
+npm run render:batch -- quiet-story football-history
 npm run qa:frames
 ```
 
@@ -75,7 +81,7 @@ asset-pack/
 
 - `Rigid Actor`：完整人物整体位移、缩放、轻微旋转和一次性入场。
 - `Pose Cut`：两张或更多完整人物姿态；仅在硬切、纸片/道具全遮挡、闪帧、撕纸或切镜下切换，永不交叉淡化。
-- `Mesh Puppet`：连续完整纹理 + 隐藏网格骨骼 + 已验证 `rig.json`。当前仓库提供协议与 Godot 示例 worker，不宣称自动 rig 已达到生产质量。
+- `Mesh Puppet`：连续完整纹理 + 隐藏连续网格 + `Skeleton2D` 骨骼。编辑器可自动生成首版绑定、人工校正并直接调用 Godot 生成透明预览；最终导出会先逐帧生成透明人物序列，缺失 Worker 结果时明确失败，不会退化成静态贴图。
 
 禁止拆肢、幻肢式关节、人物 flip/fold、默认循环 bob、整张海报同平面运镜。
 
@@ -88,8 +94,10 @@ packages/asset-pack       安全导入、媒体检查、项目读写
 packages/motion-core      8 个动作配方、事件编译、独立图层视差
 packages/remotion-engine  共享预览/导出的画面求值器
 packages/render-service   Remotion 渲染、旁白混合、外挂 SRT、QA
-packages/worker-client    Godot/RIFE 可选 worker 协议
-motion-worker             Godot 示例 worker
+packages/worker-client    Godot、自动绑定与 RIFE 本地 worker 客户端
+packages/template-market  模板目录校验与本地安装
+motion-worker             Godot Mesh Puppet Worker 与动作模板
+templates                 可安装的动作、镜头与世界规则模板
 chatgpt-asset-director    ChatGPT/Imagegen 素材生产契约
 skills                    可安装的 Codex 技能
 examples                  足球与故事资产包

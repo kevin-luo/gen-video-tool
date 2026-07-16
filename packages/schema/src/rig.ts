@@ -36,7 +36,8 @@ const weightSchema = z.object({boneId: idSchema, weight: z.number().finite().min
 
 export const rigSchema = z
   .object({
-    schemaVersion: schemaVersionSchema,
+    /** rig.json v1 remains wire-compatible with asset-pack schema v2. */
+    schemaVersion: z.union([z.literal(1), schemaVersionSchema]),
     texturePath: relativeAssetPathSchema,
     canvas: z.object({width: z.number().int().positive(), height: z.number().int().positive()}).strict(),
     bones: z.array(boneSchema).min(1),
@@ -46,6 +47,8 @@ export const rigSchema = z
         triangles: z.array(triangleSchema).min(1),
         /** One normalized influence list for every vertex. */
         weights: z.array(z.array(weightSchema).min(1)),
+        /** Boundary vertices come first; remaining vertices are internal mesh controls. */
+        boundaryVertexCount: z.number().int().min(3).optional(),
       })
       .strict(),
   })
@@ -74,6 +77,14 @@ export const rigSchema = z
         code: 'custom',
         path: ['mesh', 'weights'],
         message: 'Mesh weights must contain one influence list per vertex.',
+      });
+    }
+
+    if (rig.mesh.boundaryVertexCount && rig.mesh.boundaryVertexCount > rig.mesh.vertices.length) {
+      context.addIssue({
+        code: 'custom',
+        path: ['mesh', 'boundaryVertexCount'],
+        message: 'boundaryVertexCount cannot exceed the vertex count.',
       });
     }
 

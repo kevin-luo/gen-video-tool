@@ -11,6 +11,12 @@ flowchart LR
   D -->|ready| F[Atomic project commit]
   F --> G[React editor]
   F --> H[Restricted asset protocol]
+  G --> N[Mesh rig correction]
+  N --> O[Godot Skeleton2D + Polygon2D]
+  O --> P[Transparent WebM preview]
+  F --> O
+  O --> Q[Transparent PNG sequence]
+  Q --> I
   H --> I[Shared Remotion evaluator]
   G --> I
   I --> J[Local frame render]
@@ -33,7 +39,20 @@ Camera motion is sampled per layer using normalized depth. Background, subject, 
 
 ## Actor modes
 
-Rigid Actor renders one complete image and applies root motion. Pose Cut resolves exactly one complete pose at a frame; transitions are cover grammar, not interpolation. Mesh Puppet fails closed when a renderable mesh result is absent. The Godot worker currently validates request/result protocol and returns planned/unsupported status instead of fabricating rig quality.
+Rigid Actor renders one complete image and applies root motion. Pose Cut resolves exactly one complete pose at a frame; transitions are cover grammar, not interpolation. Mesh Puppet reads one complete texture and a validated rig, builds a real Godot `Skeleton2D + Bone2D + Polygon2D` continuous mesh, then generates transparent frames before Remotion composition. Export fails closed when the Worker or renderable result is absent. The desktop preview may show the intact source PNG while editing, but labels that state and routes motion inspection to the transparent Worker preview.
+
+## Motion Worker boundary
+
+Renderer 只能提交项目 ID、镜头 ID、人物 ID、动作模板、幅度和经过 schema 校验的 rig 数据。主进程从注册项目根目录解析人物纹理与 rig 路径，生成临时请求文件，再以参数数组启动 Godot；不拼接 shell 命令。透明预览通过 `gen-video-motion://` 受限协议读取，token 只映射到本次输出目录。
+
+Godot 输出支持透明 PNG 序列、VP9 Alpha WebM 和 ProRes 4444 MOV。最终导出使用 PNG 序列以保持 Remotion 的逐帧确定性；桌面动作检查使用短 WebM 循环。
+
+## Phase 4 services
+
+- 自动绑定：`sharp` 扫描完整人物 Alpha 边界，生成可编辑的人形首稿骨骼、规则网格、三角形与归一化权重；不把启发式结果冒充最终绑定。
+- RIFE：独立进程客户端只接受绝对可执行路径和不同的输入/输出目录，验证输入与输出帧数；运行时需提供本地 `rife-ncnn-vulkan`。
+- 批量导出：顺序执行同一 render service，并为每个项目记录成功、失败、成片路径和总报告。
+- 模板目录：catalog 与 pack 均为纯 JSON，经过 schema 与根目录包含检查后安装到用户目录，不执行模板代码。
 
 ## Export lifecycle
 

@@ -28,9 +28,13 @@ export interface LayerModel {
 }
 
 export interface ActorConfig {
+  id: string;
   mode: ActorMode;
   availableModes: ActorMode[];
   action: string;
+  actionStrength: number;
+  sourcePath?: string;
+  rigPath?: string;
   poseA: string;
   poseB: string;
   switchCover: 'foreground' | 'paper-tear' | 'flash-frame' | 'hard-cut';

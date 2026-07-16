@@ -399,6 +399,12 @@ export const validateStagedAssetPack = async (
           suggestion: '延长旁白/静音尾部，或缩短镜头总时长。',
         }));
       }
+      if (audioDurationSeconds !== null && videoDurationSeconds !== null && audioDurationSeconds > videoDurationSeconds + 0.25) {
+        diagnostics.push(diagnostic('AUDIO_TOO_LONG', 'error', `旁白 ${audioDurationSeconds.toFixed(2)}s 长于视频 ${videoDurationSeconds.toFixed(2)}s，结尾会被截断。`, {
+          path: '/audio/narrationPath', assetPath: audioPath,
+          suggestion: '以实际旁白时长重新分配镜头帧数和外挂 SRT，不要截断或拉伸语音。',
+        }));
+      }
     }
   }
 

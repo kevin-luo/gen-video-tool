@@ -1,0 +1,1 @@
+{"schemaVersion":1,"id":"object-cause-effect","shotPattern":["question","setup","contact","transfer","result","reframe"],"worldRules":["cause-before-effect","single-primary-force","continuity-of-object-position"],"audio":{"burnedSubtitles":false,"backgroundMusic":false}}

@@ -1,4 +1,4 @@
-import {Camera, Eye, EyeOff, Layers3, PersonStanding, RotateCcw, Type} from 'lucide-react';
+import {Bone, Camera, Eye, EyeOff, Layers3, PersonStanding, RotateCcw, Type} from 'lucide-react';
 import {useState} from 'react';
 import {motionRecipeLabels} from '../data/demo';
 import type {ActorMode, LayerModel, ShotModel} from '../domain/editor';
@@ -6,6 +6,7 @@ import type {ActorMode, LayerModel, ShotModel} from '../domain/editor';
 interface InspectorProps {
   shot: ShotModel;
   onUpdate: (update: (shot: ShotModel) => ShotModel) => void;
+  onEditRig?: () => void;
 }
 
 type InspectorTab = 'shot' | 'layers' | 'text' | 'actor';
@@ -16,7 +17,7 @@ const actorModeLabels: Record<ActorMode, string> = {
   'pose-cut': 'Pose Cut',
 };
 
-export function Inspector({shot, onUpdate}: InspectorProps) {
+export function Inspector({shot, onUpdate, onEditRig}: InspectorProps) {
   const [tab, setTab] = useState<InspectorTab>('actor');
   const selectedLayer = shot.layers.find((layer) => layer.id === shot.selectedLayerId) ?? shot.layers[0];
 
@@ -29,7 +30,7 @@ export function Inspector({shot, onUpdate}: InspectorProps) {
   };
 
   return (
-    <aside className="inspector" aria-label="属性面板">
+    <aside className="inspector" aria-label="属性面板" data-actor-id={shot.actor.id} data-actor-mode={shot.actor.mode}>
       <div className="inspector-tabs" role="tablist" aria-label="属性类别">
         {([
           ['shot', '镜头', Camera],
@@ -116,8 +117,9 @@ export function Inspector({shot, onUpdate}: InspectorProps) {
               </InspectorSection>
             ) : (
               <InspectorSection title="动作模板">
-                <label className="field-stack"><span>动作</span><select value={shot.actor.action} onChange={(event) => onUpdate((current) => ({...current, actor: {...current.actor, action: event.target.value}}))}><option value="idle-breathe">轻微呼吸</option><option value="look-left">向左看</option><option value="point">指向</option><option value="small-step">小步移动</option><option value="celebrate">庆祝</option></select></label>
-                <button type="button" className="button button--quiet button--full">预览人物动作</button>
+                <label className="field-stack"><span>动作</span><select value={shot.actor.action} onChange={(event) => onUpdate((current) => ({...current, actor: {...current.actor, action: event.target.value}}))}><option value="idle-breathe">轻微呼吸</option><option value="look-down">低头</option><option value="look-left">向左看</option><option value="look-right">向右看</option><option value="reach">伸手</option><option value="point">指向</option><option value="small-step">小步移动</option><option value="celebrate">庆祝</option><option value="nod">点头</option><option value="shoulder-relax">肩部放松</option></select></label>
+                {shot.actor.mode === 'mesh' ? <label className="range-field"><span><b>动作幅度</b><output>{Math.round(shot.actor.actionStrength * 100)}%</output></span><input aria-label="Mesh Puppet 动作幅度" type="range" min="0" max="1" step="0.01" value={shot.actor.actionStrength} onChange={(event) => onUpdate((current) => ({...current, actor: {...current.actor, actionStrength: Number(event.target.value)}}))} /></label> : null}
+                <button type="button" className="button button--quiet button--full" disabled={shot.actor.mode !== 'mesh' || !shot.actor.rigPath} title={shot.actor.mode === 'mesh' ? undefined : '只有 Mesh Puppet 使用本地骨骼绑定'} onClick={onEditRig}><Bone size={16} /> 打开绑定与透明预览</button>
               </InspectorSection>
             )}
           </>

@@ -2,15 +2,57 @@
   "schemaVersion": 2,
   "id": "shot-03",
   "name": "所有人都看见这颗球",
-  "durationFrames": 102,
+  "durationFrames": 103,
   "recipeId": "detail-reveal",
   "energy": "balanced",
   "layers": [
-    {"id": "stadium", "role": "background", "assetPath": "assets/backgrounds/stadium.png", "depth": 0.06, "visible": true, "transform": {"x": 120, "y": 260, "scaleX": 1.48, "scaleY": 1.48, "rotation": 0, "opacity": 0.72, "anchorX": 0.5, "anchorY": 0.5}},
-    {"id": "ball", "role": "prop", "assetPath": "assets/props/ball.svg", "depth": 0.82, "visible": true, "transform": {"x": -40, "y": 120, "scaleX": 1.65, "scaleY": 1.65, "rotation": -12, "opacity": 1, "anchorX": 0.5, "anchorY": 0.5}}
+    {
+      "id": "stadium",
+      "role": "background",
+      "assetPath": "assets/backgrounds/stadium.png",
+      "depth": 0.06,
+      "visible": true,
+      "transform": {
+        "x": 120,
+        "y": 260,
+        "scaleX": 1.48,
+        "scaleY": 1.48,
+        "rotation": 0,
+        "opacity": 0.72,
+        "anchorX": 0.5,
+        "anchorY": 0.5
+      }
+    },
+    {
+      "id": "ball",
+      "role": "prop",
+      "assetPath": "assets/props/ball.svg",
+      "depth": 0.82,
+      "visible": true,
+      "transform": {
+        "x": -40,
+        "y": 120,
+        "scaleX": 1.65,
+        "scaleY": 1.65,
+        "rotation": -12,
+        "opacity": 1,
+        "anchorX": 0.5,
+        "anchorY": 0.5
+      }
+    }
   ],
   "actors": [],
   "motionEvents": [],
-  "title": {"text": "人人看得见，方向看不见", "language": "zh-CN", "maxLines": 2, "safeArea": 0.08, "paperBackground": true, "rotation": -2},
-  "transition": {"type": "flash-frame", "durationFrames": 7}
+  "title": {
+    "text": "人人看得见，方向看不见",
+    "language": "zh-CN",
+    "maxLines": 2,
+    "safeArea": 0.08,
+    "paperBackground": true,
+    "rotation": -2
+  },
+  "transition": {
+    "type": "flash-frame",
+    "durationFrames": 7
+  }
 }

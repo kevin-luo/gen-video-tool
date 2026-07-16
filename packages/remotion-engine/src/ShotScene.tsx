@@ -13,7 +13,8 @@ export const ShotScene: React.FC<{
   fps: number;
   aspectRatio: '9:16' | '16:9' | '1:1' | '4:5';
   assetBase: string;
-}> = ({shot, width, height, fps, aspectRatio, assetBase}) => {
+  allowUnrenderedMesh?: boolean;
+}> = ({shot, width, height, fps, aspectRatio, assetBase, allowUnrenderedMesh = false}) => {
   const frame = useCurrentFrame();
   const recipePlan = compileMotionRecipe({
     recipeId: shot.recipeId,
@@ -51,7 +52,7 @@ export const ShotScene: React.FC<{
         return <PaperLayer key={layer.id} layer={layer} layerIndex={index} frame={frame} plan={plan} parallax={parallax} assetBase={assetBase} />;
       })}
       {shot.actors.map((actor, index) => (
-        <PaperActor key={actor.id} actor={actor} actorIndex={index} frame={frame} plan={plan} parallax={subjectSample} assetBase={assetBase} />
+        <PaperActor key={actor.id} actor={actor} actorIndex={index} frame={frame} plan={plan} parallax={subjectSample} assetBase={assetBase} allowUnrenderedMesh={allowUnrenderedMesh} />
       ))}
       <TitleLayer shot={shot} width={width} height={height} />
       <div style={{position: 'absolute', inset: 0, zIndex: 180, pointerEvents: 'none', boxShadow: 'inset 0 0 120px rgba(15,10,5,.18)', mixBlendMode: 'multiply'}} />

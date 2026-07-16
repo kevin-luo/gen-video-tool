@@ -1,5 +1,5 @@
 import type {AssetPackInspection} from '@gen-video-tool/asset-pack';
-import type {ProjectDocument} from '@gen-video-tool/schema';
+import type {MeshActionTemplate, ProjectDocument, Rig} from '@gen-video-tool/schema';
 
 export interface AssetPackSelection {
   handle: string;
@@ -48,6 +48,44 @@ export interface ExportProgress {
   progress: number;
 }
 
+export interface MeshRigPayload {
+  projectId: string;
+  shotId: string;
+  actorId: string;
+  rig: Rig;
+  textureUrl: string;
+  readOnly: boolean;
+}
+
+export interface MeshPreviewRequest {
+  projectId: string;
+  shotId: string;
+  actorId: string;
+  action: MeshActionTemplate;
+  amplitude: number;
+  rig?: Rig;
+}
+
+export interface MeshPreviewResult {
+  requestId: string;
+  videoUrl: string;
+  frameCount: number;
+  fps: number;
+  durationSeconds: number;
+  warnings: string[];
+}
+
+export interface TemplateMarketEntry {
+  id: string;
+  name: string;
+  version: string;
+  category: 'sports' | 'story' | 'explainer' | 'commerce';
+  summary: string;
+  actions: string[];
+  recipes: string[];
+  installed: boolean;
+}
+
 export interface DesktopApi {
   platform: string;
   selectAssetPack: () => Promise<AssetPackSelection | null>;
@@ -62,6 +100,12 @@ export interface DesktopApi {
   cancelExport: (projectId: string) => Promise<void>;
   onExportProgress: (listener: (progress: ExportProgress) => void) => () => void;
   revealOutput: (projectId: string) => Promise<void>;
+  loadMeshRig: (projectId: string, shotId: string, actorId: string) => Promise<MeshRigPayload>;
+  renderMeshPreview: (request: MeshPreviewRequest) => Promise<MeshPreviewResult>;
+  autoRigMesh: (projectId: string, shotId: string, actorId: string) => Promise<MeshRigPayload>;
+  saveMeshRig: (projectId: string, shotId: string, actorId: string, rig: Rig) => Promise<MeshRigPayload>;
+  listTemplates: () => Promise<TemplateMarketEntry[]>;
+  installTemplate: (templateId: string) => Promise<TemplateMarketEntry[]>;
 }
 
 export const IPC_CHANNELS = {
@@ -77,4 +121,10 @@ export const IPC_CHANNELS = {
   exportProgress: 'projects:export-progress',
   cancelExport: 'projects:cancel-export',
   revealOutput: 'projects:reveal-output',
+  loadMeshRig: 'motion:load-rig',
+  renderMeshPreview: 'motion:render-preview',
+  autoRigMesh: 'motion:auto-rig',
+  saveMeshRig: 'motion:save-rig',
+  listTemplates: 'templates:list',
+  installTemplate: 'templates:install',
 } as const;

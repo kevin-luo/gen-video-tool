@@ -26,6 +26,7 @@ for (const [id, outputName] of [['football-history', 'football'], ['quiet-story'
     let cursor = 0;
     const times: Array<{label: string; seconds: number}> = [];
     const poseTimes: Array<{label: string; seconds: number}> = [];
+    const physicalTimes: Array<{label: string; seconds: number}> = [];
     for (const shot of project.shots) {
       const duration = shot.durationFrames / project.manifest.fps;
       times.push(
@@ -43,6 +44,17 @@ for (const [id, outputName] of [['football-history', 'football'], ['quiet-story'
             {label: `${shot.id}-${actor.id}-after`, seconds: Math.min(cursor + duration - 0.03, at + 0.1)},
           );
         }
+      }
+      for (const layer of shot.layers) {
+        if (!layer.physicalMotion) continue;
+        const at = cursor + layer.physicalMotion.contactFrame / project.manifest.fps;
+        const end = cursor + (layer.physicalMotion.contactFrame + layer.physicalMotion.flightFrames) / project.manifest.fps;
+        physicalTimes.push(
+          {label: `${shot.id}-${layer.id}-before-contact`, seconds: Math.max(cursor, at - 0.1)},
+          {label: `${shot.id}-${layer.id}-contact`, seconds: at},
+          {label: `${shot.id}-${layer.id}-after-contact`, seconds: Math.min(cursor + duration - 0.03, at + 0.2)},
+          {label: `${shot.id}-${layer.id}-flight-end`, seconds: Math.min(cursor + duration - 0.03, end)},
+        );
       }
       cursor += duration;
     }
@@ -75,6 +87,10 @@ for (const [id, outputName] of [['football-history', 'football'], ['quiet-story'
     if (poseTimes.length) {
       const poses = await extract(poseTimes, 'pose');
       await compose(poses, path.join(outputRoot, 'pose-cut-contact-sheet.jpg'), 3);
+    }
+    if (physicalTimes.length) {
+      const physical = await extract(physicalTimes, 'physical');
+      await compose(physical, path.join(outputRoot, 'physical-motion-contact-sheet.jpg'), 4);
     }
   } finally {
     await fs.rm(temp, {recursive: true, force: true});

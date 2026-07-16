@@ -4,6 +4,7 @@ import {IconButton} from '../components/IconButton';
 import {ExportDialog} from '../editor/ExportDialog';
 import {Inspector} from '../editor/Inspector';
 import {PreviewStage} from '../editor/PreviewStage';
+import {RigCorrectionModal} from '../editor/RigCorrectionModal';
 import {ShotRail} from '../editor/ShotRail';
 import {Timeline} from '../editor/Timeline';
 import type {ProjectModel} from '../domain/editor';
@@ -25,6 +26,7 @@ export function EditorScreen({initialProject, onBack}: EditorScreenProps) {
   const [playhead, setPlayhead] = useState(13.42);
   const [playing, setPlaying] = useState(false);
   const [showExport, setShowExport] = useState(false);
+  const [showRigCorrection, setShowRigCorrection] = useState(false);
 
   useEffect(() => {
     if (!playing) return;
@@ -112,11 +114,21 @@ export function EditorScreen({initialProject, onBack}: EditorScreenProps) {
       <div className="editor-main-grid">
         <ShotRail shots={session.project.shots} selectedShotId={session.selectedShotId} onSelect={selectShot} onReorder={session.reorderShot} />
         <PreviewStage shot={session.selectedShot} project={previewProject} assetBase={session.project.assetBase} playhead={playhead} duration={session.duration} playing={playing} onTogglePlay={() => setPlaying((current) => !current)} onSeek={setPlayhead} />
-        <Inspector shot={session.selectedShot} onUpdate={(update) => session.updateShot(session.selectedShot!.id, update)} />
+        <Inspector shot={session.selectedShot} onUpdate={(update) => session.updateShot(session.selectedShot!.id, update)} onEditRig={() => setShowRigCorrection(true)} />
       </div>
 
       <Timeline shots={session.project.shots} selectedShotId={session.selectedShotId} duration={session.duration} playhead={playhead} onSeek={setPlayhead} onSelectShot={selectShot} />
       {showExport ? <ExportDialog project={session.project} onClose={() => setShowExport(false)} /> : null}
+      {showRigCorrection && session.selectedShot.actor.mode === 'mesh' ? (
+        <RigCorrectionModal
+          projectId={session.project.id}
+          shotId={session.selectedShot.id}
+          actorId={session.selectedShot.actor.id}
+          initialAction={session.selectedShot.actor.action}
+          initialAmplitude={session.selectedShot.actor.actionStrength}
+          onClose={() => setShowRigCorrection(false)}
+        />
+      ) : null}
     </main>
   );
 }

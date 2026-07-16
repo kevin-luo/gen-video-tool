@@ -6,6 +6,7 @@ import {
   MOTION_RECIPES,
   sampleCamera,
   sampleParallaxFrame,
+  sampleBallisticProp,
 } from '@gen-video-tool/motion-core';
 
 describe('motion recipe registry', () => {
@@ -32,6 +33,21 @@ describe('motion recipe registry', () => {
     expect(recipe.parallax.background).toBeLessThan(recipe.parallax.subject);
     expect(recipe.parallax.subject).toBeLessThan(recipe.parallax.foreground);
     expect(recipe.parallax.title).toBeLessThan(recipe.parallax.subject);
+  });
+});
+
+describe('world-aware prop motion', () => {
+  const base = {x: 20, y: 700, scaleX: 0.26, scaleY: 0.26, rotation: 0};
+  const kick = {contactFrame: 12, flightFrames: 30, targetX: 90, targetY: -260, targetScale: 0.14, curveX: 24, spinDegrees: 420};
+
+  it('keeps the ball planted before foot contact', () => {
+    expect(sampleBallisticProp(kick, 0, base)).toEqual(base);
+    expect(sampleBallisticProp(kick, 11, base)).toEqual(base);
+  });
+
+  it('moves only after contact and reaches the configured goal-side target', () => {
+    expect(sampleBallisticProp(kick, 13, base).y).toBeLessThan(base.y);
+    expect(sampleBallisticProp(kick, 42, base)).toMatchObject({x: 90, y: -260, scaleX: 0.14, scaleY: 0.14, rotation: 420});
   });
 });
 describe('deterministic recipe compiler', () => {

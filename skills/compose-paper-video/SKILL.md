@@ -16,12 +16,13 @@ Produce a complete asset pack before opening the editor. Treat visual logic as a
 5. Select the actor mode:
    - Use Rigid Actor for whole-person translation, scale, small rotation, and deterministic entrance.
    - Use Pose Cut for a large action change. Supply at least two complete people and fully hide the switch with a hard cut, paper/prop cover, flash, tear, or cut-shot.
-   - Use Mesh Puppet only when a manually verified continuous texture and `rig.json` exist. Never claim automatic rig quality.
+   - Use Mesh Puppet for a complete continuous texture. Load an existing `rig.json`, or generate a first pass with the local auto-rig helper, then correct it in the Electron binding workspace and verify a transparent Godot preview. Follow [mesh-puppet.md](references/mesh-puppet.md).
 6. Generate separate no-person backgrounds, complete actor poses, props, and foreground occluders. Keep titles as structured text.
 7. Author schema-v2 `manifest.json` and every `shot.json`. Add `narration.txt`, optional `audio/narration.wav`, and external `subtitles.srt`.
 8. Run `npm run validate:examples` or the equivalent asset-pack inspection. Repair every error; inspect every warning.
-9. Preview with the shared Remotion evaluator. Confirm per-layer parallax, z-order, actor ground contact, facing, and Pose Cut coverage.
-10. Render locally. Run frame QA at shot start/middle/end and immediately before/at/after each pose switch.
+9. For every Mesh actor, run a transparent action preview and inspect the silhouette at rest, peak deformation, and recovery. Reject mesh tears, disconnected contours, implausible joints, foot sliding, or action-axis errors.
+10. Preview with the shared Remotion evaluator. Confirm per-layer parallax, z-order, actor ground contact, facing, cause-before-effect timing, and Pose Cut coverage.
+11. Render locally. Run frame QA at shot start/middle/end, before/at/after every pose switch, and before/at/after every physical contact event.
 
 ## Hard rules
 
@@ -32,6 +33,7 @@ Produce a complete asset pack before opening the editor. Treat visual logic as a
 - Never burn SRT into the image and never add BGM by default.
 - Never accept a filename or prompt as proof of physical correctness; inspect pixels and sampled frames.
 - For football, place the kicker behind the ball, facing the goal, with the keeper inside the goal-facing action axis.
+- For football, keep the ball planted until the declared contact frame; start goalkeeper commitment only after the ball leaves the foot unless the story explicitly depicts a guessed early dive.
 
 ## Repository commands
 
@@ -41,7 +43,10 @@ npm run test
 npm run validate:examples
 npm run render:football
 npm run render:story
+npm run render:mesh-preview
+npm run render:mesh-webm
+npm run render:batch -- quiet-story football-history
 npm run qa:frames
 ```
 
-Deliver `final.mp4`, optional narration in the MP4, a separate `subtitles.srt`, and QA frames. Report any unsupported Mesh Puppet capability truthfully.
+Deliver `final.mp4`, optional narration in the MP4, a separate `subtitles.srt`, transparent Mesh preview output when applicable, and QA frames. Report any missing local Worker or unverified automatic binding truthfully.

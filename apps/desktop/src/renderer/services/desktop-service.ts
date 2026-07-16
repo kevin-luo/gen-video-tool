@@ -42,6 +42,12 @@ const browserFallback: DesktopApi = {
   cancelExport: async () => undefined,
   onExportProgress: () => () => undefined,
   revealOutput: async () => undefined,
+  loadMeshRig: async () => { throw new Error('MESH_PREVIEW_REQUIRES_DESKTOP'); },
+  renderMeshPreview: async () => { throw new Error('MESH_PREVIEW_REQUIRES_DESKTOP'); },
+  autoRigMesh: async () => { throw new Error('MESH_PREVIEW_REQUIRES_DESKTOP'); },
+  saveMeshRig: async () => { throw new Error('MESH_PREVIEW_REQUIRES_DESKTOP'); },
+  listTemplates: async () => [],
+  installTemplate: async () => { throw new Error('TEMPLATE_INSTALL_REQUIRES_DESKTOP'); },
 };
 
 export const desktopService: DesktopApi = window.genVideoDesktop ?? browserFallback;

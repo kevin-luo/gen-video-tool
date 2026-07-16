@@ -1,4 +1,5 @@
 import {randomUUID} from 'node:crypto';
+import fsSync from 'node:fs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import {fileURLToPath, pathToFileURL} from 'node:url';
@@ -11,35 +12,135 @@ import {
   saveProjectDirectory,
   type AssetPackSource,
 } from '@gen-video-tool/asset-pack';
-import {parseProjectDocument, type ProjectDocument} from '@gen-video-tool/schema';
+import {
+  meshActionTemplateSchema,
+  parseProjectDocument,
+  rigSchema,
+  type MeshActor,
+  type ProjectDocument,
+  type Rig,
+} from '@gen-video-tool/schema';
 import {makeCancelSignal} from '@remotion/renderer';
 import {renderProjectDirectory} from '@gen-video-tool/render-service';
+import {createAutoRig, detectLocalTool, runMotionWorker} from '@gen-video-tool/worker-client';
+import {installTemplate, loadTemplateCatalog} from '@gen-video-tool/template-market';
 import type {
   AssetPackSelection,
   CreateProjectRequest,
   ExportProjectResult,
+  MeshPreviewRequest,
+  MeshPreviewResult,
+  MeshRigPayload,
   ProjectImportResponse,
   ProjectPayload,
   RecentProject,
+  TemplateMarketEntry,
 } from '../shared/desktop-api.js';
 import {IPC_CHANNELS} from '../shared/desktop-api.js';
 
 protocol.registerSchemesAsPrivileged([
   {scheme: 'gen-video-asset', privileges: {standard: true, secure: true, supportFetchAPI: true, corsEnabled: true, stream: true}},
+  {scheme: 'gen-video-motion', privileges: {standard: true, secure: true, supportFetchAPI: true, corsEnabled: true, stream: true}},
 ]);
 
-const preloadPath = fileURLToPath(new URL('../preload/index.mjs', import.meta.url));
+const preloadPath = fileURLToPath(new URL('../preload/index.cjs', import.meta.url));
 const selectedSources = new Map<string, AssetPackSource>();
 const projectRegistry = new Map<string, {root: string; readOnly: boolean}>();
+const motionPreviewRegistry = new Map<string, string>();
 const activeExports = new Map<string, {cancel: () => void}>();
 
 const workspaceRoot = (): string => app.isPackaged ? app.getAppPath() : process.cwd();
 const projectsRoot = (): string => path.join(app.getPath('userData'), 'projects');
 const outputRoot = (projectId: string): string => path.join(app.getPath('userData'), 'output', projectId);
+const motionPreviewRoot = (): string => path.join(app.getPath('userData'), 'motion-preview');
+const templateCatalogPath = (): string => path.join(workspaceRoot(), 'templates', 'market', 'catalog.json');
+const installedTemplatesRoot = (): string => path.join(app.getPath('userData'), 'templates');
 
 const isInside = (root: string, candidate: string): boolean => {
   const relative = path.relative(root, candidate);
   return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
+};
+
+const requireId = (value: unknown, code: string): string => {
+  if (typeof value !== 'string' || !value.trim()) throw new Error(code);
+  return value;
+};
+
+const resolveProjectAsset = (root: string, relativePath: string): string => {
+  const target = path.resolve(root, ...relativePath.split('/'));
+  if (!isInside(root, target)) throw new Error('PROJECT_ASSET_OUTSIDE_ROOT');
+  return target;
+};
+
+const assetUrl = (projectId: string, relativePath: string): string =>
+  `gen-video-asset://${projectId}/${relativePath.split('/').map(encodeURIComponent).join('/')}`;
+
+const findRemotionTool = (name: 'ffmpeg' | 'ffprobe'): string | null => {
+  const extension = process.platform === 'win32' ? '.exe' : '';
+  const remotionRoot = path.join(workspaceRoot(), 'node_modules', '@remotion');
+  try {
+    for (const directory of fsSync.readdirSync(remotionRoot)) {
+      if (!directory.startsWith('compositor-')) continue;
+      const candidate = path.join(remotionRoot, directory, `${name}${extension}`);
+      if (fsSync.existsSync(candidate)) return candidate;
+    }
+  } catch {
+    // Packaged builds may supply the executable through the environment instead.
+  }
+  return detectLocalTool(name).executable ?? null;
+};
+
+const findGodotExecutable = (): string | null => {
+  const developmentTools = path.resolve(workspaceRoot(), '..', '.tools');
+  const candidates = process.platform === 'win32' ? [
+    path.join(workspaceRoot(), 'tools', 'godot', 'godot.exe'),
+    path.join(developmentTools, 'godot-4.7.1', 'Godot_v4.7.1-stable_win64_console.exe'),
+    path.join(developmentTools, 'godot-4.7.1', 'Godot_v4.7.1-stable_win64.exe'),
+  ] : [path.join(workspaceRoot(), 'tools', 'godot', 'godot')];
+  return detectLocalTool('godot', {bundledCandidates: candidates}).executable ?? null;
+};
+
+const meshActorContext = async (projectIdValue: unknown, shotIdValue: unknown, actorIdValue: unknown) => {
+  const projectId = requireId(projectIdValue, 'PROJECT_ID_INVALID');
+  const shotId = requireId(shotIdValue, 'SHOT_ID_INVALID');
+  const actorId = requireId(actorIdValue, 'ACTOR_ID_INVALID');
+  if (!projectRegistry.has(projectId)) await refreshProjectRegistry();
+  const registration = projectRegistry.get(projectId);
+  if (!registration) throw new Error('PROJECT_NOT_REGISTERED');
+  const project = await loadProjectDirectory(registration.root);
+  const shot = project.shots.find((candidate) => candidate.id === shotId);
+  if (!shot) throw new Error('SHOT_NOT_FOUND');
+  const actor = shot.actors.find((candidate) => candidate.id === actorId);
+  if (!actor) throw new Error('ACTOR_NOT_FOUND');
+  if (actor.mode !== 'mesh') throw new Error('ACTOR_IS_NOT_MESH');
+  return {projectId, shotId, actorId, project, registration, actor: actor as MeshActor};
+};
+
+const readMeshRig = async (context: Awaited<ReturnType<typeof meshActorContext>>): Promise<Rig> => {
+  const rigPath = resolveProjectAsset(context.registration.root, context.actor.rigPath);
+  return rigSchema.parse(JSON.parse(await fs.readFile(rigPath, 'utf8')));
+};
+
+const meshRigPayload = async (context: Awaited<ReturnType<typeof meshActorContext>>, rig?: Rig): Promise<MeshRigPayload> => ({
+  projectId: context.projectId,
+  shotId: context.shotId,
+  actorId: context.actorId,
+  rig: rig ?? await readMeshRig(context),
+  textureUrl: assetUrl(context.projectId, context.actor.sourcePath),
+  readOnly: context.registration.readOnly,
+});
+
+const templateListings = async (): Promise<TemplateMarketEntry[]> => {
+  const entries = await loadTemplateCatalog(templateCatalogPath());
+  await fs.mkdir(installedTemplatesRoot(), {recursive: true});
+  return Promise.all(entries.map(async ({sourcePath: _sourcePath, ...entry}) => {
+    try {
+      await fs.access(path.join(installedTemplatesRoot(), entry.id, 'install.json'));
+      return {...entry, installed: true};
+    } catch {
+      return {...entry, installed: false};
+    }
+  }));
 };
 
 const refreshProjectRegistry = async (): Promise<void> => {
@@ -257,6 +358,105 @@ const registerIpc = (): void => {
     await fs.mkdir(outputRoot(projectId), {recursive: true});
     await shell.openPath(outputRoot(projectId));
   });
+
+  ipcMain.handle(
+    IPC_CHANNELS.loadMeshRig,
+    async (_event, projectId: unknown, shotId: unknown, actorId: unknown): Promise<MeshRigPayload> =>
+      meshRigPayload(await meshActorContext(projectId, shotId, actorId)),
+  );
+
+  ipcMain.handle(IPC_CHANNELS.renderMeshPreview, async (_event, value: unknown): Promise<MeshPreviewResult> => {
+    if (!value || typeof value !== 'object') throw new Error('MESH_PREVIEW_REQUEST_INVALID');
+    const request = value as Partial<MeshPreviewRequest>;
+    const context = await meshActorContext(request.projectId, request.shotId, request.actorId);
+    const action = meshActionTemplateSchema.parse(request.action);
+    const amplitude = Number(request.amplitude);
+    if (!Number.isFinite(amplitude) || amplitude < 0 || amplitude > 1) throw new Error('MESH_AMPLITUDE_INVALID');
+    const rig = request.rig ? rigSchema.parse(request.rig) : await readMeshRig(context);
+    if (rig.texturePath !== context.actor.sourcePath) throw new Error('MESH_TEXTURE_PATH_MISMATCH');
+    const godot = findGodotExecutable();
+    if (!godot) throw new Error('MESH_WORKER_UNAVAILABLE:set GODOT_PATH or install the bundled Godot runtime');
+    const ffmpeg = findRemotionTool('ffmpeg');
+    if (!ffmpeg) throw new Error('FFMPEG_UNAVAILABLE:set FFMPEG_PATH or install the bundled encoder');
+
+    const requestId = `${context.projectId}-${context.actorId}-${randomUUID()}`;
+    const token = randomUUID();
+    const outputDirectory = path.join(motionPreviewRoot(), token);
+    await fs.rm(outputDirectory, {recursive: true, force: true});
+    await fs.mkdir(outputDirectory, {recursive: true});
+    const rigPath = path.join(outputDirectory, 'preview-rig.json');
+    await fs.writeFile(rigPath, `${JSON.stringify(rig, null, 2)}\n`, 'utf8');
+    const result = await runMotionWorker(godot, {
+      protocolVersion: 1,
+      requestId,
+      projectId: context.projectId,
+      actorId: context.actorId,
+      texturePath: resolveProjectAsset(context.registration.root, context.actor.sourcePath),
+      rigPath,
+      ffmpegPath: ffmpeg,
+      action: {
+        template: action,
+        durationInFrames: 48,
+        startFrame: 0,
+        activeDurationInFrames: 48,
+        fps: 24,
+        amplitude,
+      },
+      output: {
+        directory: outputDirectory,
+        format: 'transparent-webm',
+        width: rig.canvas.width,
+        height: rig.canvas.height,
+        cleanupFrames: true,
+      },
+    }, {projectPath: path.join(workspaceRoot(), 'motion-worker', 'godot'), timeoutMs: 180_000});
+    if (result.status !== 'complete' || !result.outputPath || !result.hasAlpha || !result.frameCount || !result.fps) {
+      throw new Error(`MESH_PREVIEW_FAILED:${result.error?.code ?? result.status}:${result.error?.message ?? 'unknown worker error'}`);
+    }
+    const resolvedOutput = path.resolve(result.outputPath);
+    if (!isInside(outputDirectory, resolvedOutput)) throw new Error('MESH_PREVIEW_OUTPUT_OUTSIDE_ROOT');
+    motionPreviewRegistry.set(token, outputDirectory);
+    return {
+      requestId,
+      videoUrl: `gen-video-motion://${token}/${encodeURIComponent(path.basename(resolvedOutput))}`,
+      frameCount: result.frameCount,
+      fps: result.fps,
+      durationSeconds: result.frameCount / result.fps,
+      warnings: result.warnings,
+    };
+  });
+
+  ipcMain.handle(
+    IPC_CHANNELS.autoRigMesh,
+    async (_event, projectId: unknown, shotId: unknown, actorId: unknown): Promise<MeshRigPayload> => {
+      const context = await meshActorContext(projectId, shotId, actorId);
+      const texturePath = resolveProjectAsset(context.registration.root, context.actor.sourcePath);
+      const rig = await createAutoRig(texturePath, context.actor.sourcePath);
+      return meshRigPayload(context, rig);
+    },
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.saveMeshRig,
+    async (_event, projectId: unknown, shotId: unknown, actorId: unknown, value: unknown): Promise<MeshRigPayload> => {
+      const context = await meshActorContext(projectId, shotId, actorId);
+      if (context.registration.readOnly) throw new Error('PROJECT_READ_ONLY');
+      const rig = rigSchema.parse(value);
+      if (rig.texturePath !== context.actor.sourcePath) throw new Error('MESH_TEXTURE_PATH_MISMATCH');
+      const target = resolveProjectAsset(context.registration.root, context.actor.rigPath);
+      await fs.mkdir(path.dirname(target), {recursive: true});
+      await fs.writeFile(target, `${JSON.stringify(rig, null, 2)}\n`, 'utf8');
+      return meshRigPayload(context, rig);
+    },
+  );
+
+  ipcMain.handle(IPC_CHANNELS.listTemplates, async (): Promise<TemplateMarketEntry[]> => templateListings());
+
+  ipcMain.handle(IPC_CHANNELS.installTemplate, async (_event, templateId: unknown): Promise<TemplateMarketEntry[]> => {
+    const id = requireId(templateId, 'TEMPLATE_ID_INVALID');
+    await installTemplate(templateCatalogPath(), id, installedTemplatesRoot());
+    return templateListings();
+  });
 };
 
 app.whenReady().then(async () => {
@@ -273,6 +473,17 @@ app.whenReady().then(async () => {
     }
     const target = path.resolve(registration.root, ...relativePath.split('/'));
     if (!isInside(registration.root, target)) return new Response('Forbidden', {status: 403});
+    return net.fetch(pathToFileURL(target).toString());
+  });
+  protocol.handle('gen-video-motion', async (request) => {
+    const url = new URL(request.url);
+    const root = motionPreviewRegistry.get(url.hostname);
+    if (!root) return new Response('Preview not found', {status: 404});
+    let fileName = '';
+    try { fileName = decodeURIComponent(url.pathname.slice(1)); } catch { return new Response('Invalid path', {status: 400}); }
+    if (!fileName || path.basename(fileName) !== fileName || fileName.includes('\\')) return new Response('Invalid path', {status: 400});
+    const target = path.resolve(root, fileName);
+    if (!isInside(root, target)) return new Response('Forbidden', {status: 403});
     return net.fetch(pathToFileURL(target).toString());
   });
   registerIpc();

@@ -25,11 +25,20 @@ export const PaperActor: React.FC<{
   plan: CompiledMotionPlan;
   parallax: LayerParallaxSample;
   assetBase: string;
-}> = ({actor, actorIndex, frame, plan, parallax, assetBase}) => {
+  allowUnrenderedMesh?: boolean;
+}> = ({actor, actorIndex, frame, plan, parallax, assetBase, allowUnrenderedMesh = false}) => {
+  let sourcePath: string;
   if (actor.mode === 'mesh') {
-    throw new Error(`MESH_RENDER_ASSET_REQUIRED:${actor.id}`);
+    if (!actor.renderedAsset) {
+      if (!allowUnrenderedMesh) throw new Error(`MESH_RENDER_ASSET_REQUIRED:${actor.id}`);
+      sourcePath = actor.sourcePath;
+    } else {
+      const renderedFrame = Math.min(actor.renderedAsset.frameCount - 1, Math.max(0, frame));
+      sourcePath = `${actor.renderedAsset.directory}/${actor.renderedAsset.filePrefix}${String(renderedFrame).padStart(6, '0')}.png`;
+    }
+  } else {
+    sourcePath = actor.mode === 'rigid' ? actor.sourcePath : poseAtFrame(actor, frame).sourcePath;
   }
-  const sourcePath = actor.mode === 'rigid' ? actor.sourcePath : poseAtFrame(actor, frame).sourcePath;
   const base = {...defaultTransform, ...actor.transform};
   const events = eventsForRole(plan, 'subject');
   const sampled = events.map((event) => sampleEvent(event, frame, actorIndex));

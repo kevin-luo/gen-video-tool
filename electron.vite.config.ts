@@ -10,6 +10,7 @@ const aliases = {
   '@gen-video-tool/remotion-engine': path.join(root, 'packages/remotion-engine/src/index.ts'),
   '@gen-video-tool/render-service': path.join(root, 'packages/render-service/src/index.ts'),
   '@gen-video-tool/worker-client': path.join(root, 'packages/worker-client/src/index.ts'),
+  '@gen-video-tool/template-market': path.join(root, 'packages/template-market/src/index.ts'),
 };
 
 export default defineConfig({
@@ -22,7 +23,10 @@ export default defineConfig({
   },
   preload: {
     resolve: {alias: aliases},
-    build: {rollupOptions: {input: path.join(root, 'apps/desktop/src/preload/index.ts')}},
+    build: {rollupOptions: {
+      input: path.join(root, 'apps/desktop/src/preload/index.ts'),
+      output: {format: 'cjs', entryFileNames: 'index.cjs'},
+    }},
   },
   renderer: {
     root: path.join(root, 'apps/desktop/src/renderer'),

@@ -57,7 +57,7 @@ export function PreviewStage({shot, project, assetBase, playhead, duration, play
           <Player
             ref={player}
             component={ProjectVideo}
-            inputProps={{project, assetBase}}
+            inputProps={{project, assetBase, allowUnrenderedMesh: true}}
             durationInFrames={durationInFrames}
             compositionWidth={project.manifest.canvas.width}
             compositionHeight={project.manifest.canvas.height}
@@ -66,6 +66,7 @@ export function PreviewStage({shot, project, assetBase, playhead, duration, play
             loop={false}
             style={{width: '100%', height: '100%'}}
           />
+          {shot.actor.mode === 'mesh' ? <span className="mesh-preview-note">编辑画布显示完整人物；动作请在 Mesh Puppet 透明预览中检查</span> : null}
           <div className="video-canvas__safe" />
         </div>
       </div>

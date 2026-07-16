@@ -20,6 +20,11 @@
     "validate:examples": "tsx scripts/validate-examples.ts",
     "render:football": "tsx scripts/render-example.ts football-history",
     "render:story": "tsx scripts/render-example.ts quiet-story",
+    "render:batch": "tsx scripts/batch-export.ts",
+    "render:mesh-preview": "tsx scripts/render-mesh-preview.ts celebrate",
+    "render:mesh-webm": "tsx scripts/render-mesh-preview.ts celebrate transparent-webm",
+    "rife:frames": "tsx scripts/rife-interpolate.ts",
+    "sync:football-voice": "tsx scripts/sync-project-to-narration.ts football-history",
     "qa:frames": "tsx scripts/make-contact-sheets.ts",
     "qa": "npm run typecheck && npm run test && npm run validate:examples"
   },

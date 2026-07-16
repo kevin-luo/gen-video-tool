@@ -2,18 +2,96 @@
   "schemaVersion": 2,
   "id": "shot-04",
   "name": "身体留在中路",
-  "durationFrames": 114,
+  "durationFrames": 115,
   "recipeId": "editorial-pan",
   "energy": "balanced",
   "layers": [
-    {"id": "stadium", "role": "background", "assetPath": "assets/backgrounds/stadium.png", "depth": 0.06, "visible": true, "transform": {"x": 0, "y": 0, "scaleX": 1.12, "scaleY": 1.12, "rotation": 0, "opacity": 1, "anchorX": 0.5, "anchorY": 0.5}},
-    {"id": "ball", "role": "prop", "assetPath": "assets/props/ball.svg", "depth": 0.72, "visible": true, "transform": {"x": 70, "y": 290, "scaleX": 0.42, "scaleY": 0.42, "rotation": 0, "opacity": 1, "anchorX": 0.5, "anchorY": 0.5}}
+    {
+      "id": "stadium",
+      "role": "background",
+      "assetPath": "assets/backgrounds/stadium.png",
+      "depth": 0.06,
+      "visible": true,
+      "transform": {
+        "x": 0,
+        "y": 0,
+        "scaleX": 1.12,
+        "scaleY": 1.12,
+        "rotation": 0,
+        "opacity": 1,
+        "anchorX": 0.5,
+        "anchorY": 0.5
+      }
+    },
+    {
+      "id": "ball",
+      "role": "prop",
+      "assetPath": "assets/props/ball.svg",
+      "depth": 0.72,
+      "visible": true,
+      "transform": {
+        "x": 30,
+        "y": 720,
+        "scaleX": 0.26,
+        "scaleY": 0.26,
+        "rotation": 0,
+        "opacity": 1,
+        "anchorX": 0.5,
+        "anchorY": 0.5
+      }
+    }
   ],
   "actors": [
-    {"id": "kicker-run", "mode": "rigid", "sourcePath": "assets/characters/kicker/pose-run.png", "zIndex": 14, "motion": ["enter-down"], "transform": {"x": -120, "y": 560, "scaleX": 0.9, "scaleY": 0.9, "rotation": 0, "opacity": 1, "anchorX": 0.5, "anchorY": 0.5}},
-    {"id": "keeper-ready", "mode": "rigid", "sourcePath": "assets/characters/keeper/pose-ready.png", "zIndex": 8, "motion": ["shadow-settle"], "transform": {"x": 0, "y": -360, "scaleX": 0.7, "scaleY": 0.7, "rotation": 0, "opacity": 1, "anchorX": 0.5, "anchorY": 0.5}}
+    {
+      "id": "kicker-run",
+      "mode": "rigid",
+      "sourcePath": "assets/characters/kicker/pose-run.png",
+      "zIndex": 14,
+      "motion": [
+        "enter-down"
+      ],
+      "transform": {
+        "x": -120,
+        "y": 560,
+        "scaleX": 0.9,
+        "scaleY": 0.9,
+        "rotation": 0,
+        "opacity": 1,
+        "anchorX": 0.5,
+        "anchorY": 0.5
+      }
+    },
+    {
+      "id": "keeper-ready",
+      "mode": "rigid",
+      "sourcePath": "assets/characters/keeper/pose-ready.png",
+      "zIndex": 8,
+      "motion": [
+        "shadow-settle"
+      ],
+      "transform": {
+        "x": 0,
+        "y": -360,
+        "scaleX": 0.7,
+        "scaleY": 0.7,
+        "rotation": 0,
+        "opacity": 1,
+        "anchorX": 0.5,
+        "anchorY": 0.5
+      }
+    }
   ],
   "motionEvents": [],
-  "title": {"text": "先别把答案写在身体上", "language": "zh-CN", "maxLines": 2, "safeArea": 0.08, "paperBackground": true, "rotation": 1},
-  "transition": {"type": "hard-cut", "durationFrames": 0}
+  "title": {
+    "text": "先别把答案写在身体上",
+    "language": "zh-CN",
+    "maxLines": 2,
+    "safeArea": 0.08,
+    "paperBackground": true,
+    "rotation": 1
+  },
+  "transition": {
+    "type": "hard-cut",
+    "durationFrames": 0
+  }
 }

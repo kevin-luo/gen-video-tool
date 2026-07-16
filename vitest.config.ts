@@ -11,6 +11,7 @@ export default defineConfig({
       '@gen-video-tool/motion-core': path.join(root, 'packages/motion-core/src/index.ts'),
       '@gen-video-tool/remotion-engine': path.join(root, 'packages/remotion-engine/src/index.ts'),
       '@gen-video-tool/worker-client': path.join(root, 'packages/worker-client/src/index.ts'),
+      '@gen-video-tool/template-market': path.join(root, 'packages/template-market/src/index.ts'),
     },
   },
   test: {

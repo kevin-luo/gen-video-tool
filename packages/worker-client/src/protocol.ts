@@ -22,9 +22,12 @@ export const motionWorkerRequestSchema = z.object({
   actorId: z.string().min(1),
   texturePath: z.string().min(1),
   rigPath: z.string().min(1),
+  ffmpegPath: z.string().min(1).optional(),
   action: z.object({
     template: meshActionTemplateSchema,
     durationInFrames: z.number().int().min(1).max(1800),
+    startFrame: z.number().int().nonnegative().default(0),
+    activeDurationInFrames: z.number().int().positive().max(1800).optional(),
     fps: z.number().int().min(1).max(120),
     amplitude: z.number().min(0).max(1).default(0.35),
   }),
@@ -33,6 +36,7 @@ export const motionWorkerRequestSchema = z.object({
     format: z.enum(['png-sequence', 'transparent-webm', 'alpha-mov']),
     width: z.number().int().positive().max(8192),
     height: z.number().int().positive().max(8192),
+    cleanupFrames: z.boolean().default(true),
   }),
 });
 
@@ -44,6 +48,11 @@ export const motionWorkerResultSchema = z.object({
   status: z.enum(['complete', 'failed', 'unsupported']),
   outputPath: z.string().optional(),
   frameCount: z.number().int().nonnegative().optional(),
+  fps: z.number().int().positive().optional(),
+  width: z.number().int().positive().optional(),
+  height: z.number().int().positive().optional(),
+  format: z.enum(['png-sequence', 'transparent-webm', 'alpha-mov']).optional(),
+  hasAlpha: z.boolean().optional(),
   warnings: z.array(z.string()).default([]),
   error: z.object({code: z.string(), message: z.string()}).optional(),
 });

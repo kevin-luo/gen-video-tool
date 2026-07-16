@@ -29,11 +29,27 @@ Release follow-ups:
 - Add cancellable FFmpeg subprocess termination after Remotion has completed but mux/QA is still running.
 - Add end-to-end packaged-app tests on CI runners with GPU and software-render fallbacks.
 
-## Phase 3 — optional motion worker
+## Phase 3 — Mesh Puppet
 
-Status: protocol, executable detection, request/result validation, action templates, and Godot sample worker implemented.
+Status: implemented and exercised through the desktop app.
 
-Reliable automatic mesh generation, production weights, self-intersection prevention, and real-asset certification remain planned. The current worker fails closed and never labels a placeholder rig as production-ready.
+- Godot Worker reads a complete character PNG and validated `rig.json`.
+- Runtime construction of `Skeleton2D`, hierarchical `Bone2D`, and weighted continuous `Polygon2D` mesh.
+- Ten deterministic action templates with start frame, active duration, amplitude, and fps.
+- Transparent PNG sequence, VP9 Alpha WebM, and ProRes 4444 MOV output.
+- Electron IPC load/render/save path, restricted preview protocol, draggable dual-end bone correction, keyboard nudge, read-only handling, and unsaved-change warning.
+- Render service pre-renders Mesh actors and fails explicitly if Godot or transparent output is unavailable.
+
+## Phase 4 — auxiliary capabilities
+
+Status: first reusable local version implemented.
+
+- Automatic first-pass rig from the complete PNG Alpha silhouette, with regular continuous mesh and normalized bone weights; correction remains required for unusual poses.
+- RIFE PNG-sequence interpolation client and CLI with destructive-path and frame-count gates; the external model executable is optional and not redistributed.
+- Multi-project batch export and JSON result report.
+- Validated local template catalog, safe installation, and desktop template browser.
+
+Commercial hardening still required: multi-person automatic keypoint inference, self-intersection scoring, GPU/CPU benchmark matrix, signed runtime bundles, remote template registry, licensing review, and broader real-asset certification.
 
 ## Acceptance
 
@@ -44,6 +60,9 @@ npm run test
 npm run validate:examples
 npm run render:football
 npm run render:story
+npm run render:mesh-preview
+npm run render:mesh-webm
+npm run render:batch -- quiet-story football-history
 npm run qa:frames
 npm run build:desktop
 ```

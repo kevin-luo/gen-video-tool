@@ -39,6 +39,18 @@ export const paperAnimationSchema = z.enum([
 ]);
 export type PaperAnimation = z.infer<typeof paperAnimationSchema>;
 
+export const ballisticPropMotionSchema = z.object({
+  kind: z.literal('ballistic-kick'),
+  contactFrame: z.number().int().nonnegative(),
+  flightFrames: z.number().int().positive().max(240),
+  targetX: z.number().finite(),
+  targetY: z.number().finite(),
+  targetScale: z.number().finite().positive().max(4),
+  curveX: z.number().finite().min(-600).max(600).default(0),
+  spinDegrees: z.number().finite().min(-1440).max(1440).default(360),
+}).strict();
+export type BallisticPropMotion = z.infer<typeof ballisticPropMotionSchema>;
+
 export const layerSchema = z
   .object({
     id: idSchema,
@@ -46,6 +58,7 @@ export const layerSchema = z
     assetPath: relativeAssetPathSchema.optional(),
     text: z.string().min(1).max(500).optional(),
     transform: transformSchema.optional(),
+    physicalMotion: ballisticPropMotionSchema.optional(),
     depth: z.number().finite().min(0).max(1).default(0.5),
     visible: z.boolean().default(true),
   })
@@ -135,6 +148,16 @@ export const shotSchema = z
           message: `Actor references missing layer: ${actor.layerId}`,
         });
       }
+      if (actor.mode === 'mesh') {
+        const actionDuration = actor.actionDurationFrames ?? shot.durationFrames - actor.actionStartFrame;
+        if (actor.actionStartFrame + actionDuration > shot.durationFrames) {
+          context.addIssue({
+            code: 'custom',
+            path: ['actors', index, 'actionDurationFrames'],
+            message: 'Mesh action extends beyond the shot duration.',
+          });
+        }
+      }
     }
     for (const [index, event] of shot.motionEvents.entries()) {
       if (event.startFrame + event.durationFrames > shot.durationFrames) {
@@ -142,6 +165,22 @@ export const shotSchema = z
           code: 'custom',
           path: ['motionEvents', index],
           message: 'Motion event extends beyond the shot duration.',
+        });
+      }
+    }
+    for (const [index, layer] of shot.layers.entries()) {
+      if (layer.physicalMotion && layer.physicalMotion.contactFrame + layer.physicalMotion.flightFrames > shot.durationFrames) {
+        context.addIssue({
+          code: 'custom',
+          path: ['layers', index, 'physicalMotion'],
+          message: 'Physical prop motion extends beyond the shot duration.',
+        });
+      }
+      if (layer.physicalMotion && layer.role !== 'prop') {
+        context.addIssue({
+          code: 'custom',
+          path: ['layers', index, 'physicalMotion'],
+          message: 'Physical prop motion can only be attached to a prop layer.',
         });
       }
     }

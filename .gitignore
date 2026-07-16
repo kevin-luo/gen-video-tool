@@ -15,3 +15,4 @@ Thumbs.db
 !.env.example
 examples/**/.staging/
 examples/**/.autosave/
+motion-worker/godot/.godot/

@@ -56,6 +56,15 @@ export const meshActorSchema = z
     rigPath: relativeAssetPathSchema,
     actionTemplate: meshActionTemplateSchema.optional(),
     actionStrength: z.number().finite().min(0).max(1).default(0.5),
+    actionStartFrame: z.number().int().nonnegative().default(0),
+    actionDurationFrames: z.number().int().positive().max(1800).optional(),
+    renderedAsset: z.object({
+      format: z.literal('png-sequence'),
+      directory: relativeAssetPathSchema,
+      frameCount: z.number().int().positive(),
+      fps: z.number().int().positive(),
+      filePrefix: z.string().regex(/^[a-zA-Z0-9_-]+$/).default('frame_'),
+    }).strict().optional(),
   })
   .strict();
 

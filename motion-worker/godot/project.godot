@@ -1,4 +1,4 @@
-; Sample protocol worker. Production auto-rigging is intentionally not claimed.
+; Offscreen-positioned Mesh Puppet renderer. The Electron app owns UI and project state.
 config_version=5
 
 [application]
@@ -10,8 +10,12 @@ window/size/viewport_width=1080
 window/size/viewport_height=1920
 window/size/window_width_override=540
 window/size/window_height_override=960
+window/per_pixel_transparency/allowed=true
 
 [rendering]
 renderer/rendering_method="gl_compatibility"
 renderer/rendering_method.mobile="gl_compatibility"
 environment/defaults/default_clear_color=Color(0, 0, 0, 0)
+
+[audio]
+driver/enable_input=false

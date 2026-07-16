@@ -1,0 +1,1 @@
+{"schemaVersion":1,"id":"football-last-frame","shotPattern":["establish","approach","plant-foot","contact","flight","keeper-response","resolution"],"worldRules":["goal-facing-kick","ball-stationary-before-contact","keeper-reacts-after-contact"],"audio":{"burnedSubtitles":false,"backgroundMusic":false}}

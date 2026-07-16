@@ -5,6 +5,8 @@ import path from 'node:path';
 import {bundle} from '@remotion/bundler';
 import {getCompositions, renderMedia, type CancelSignal} from '@remotion/renderer';
 import {loadProjectDirectory, projectDurationSeconds} from '@gen-video-tool/asset-pack';
+import {rigSchema, type ProjectDocument} from '@gen-video-tool/schema';
+import {detectLocalTool, runMotionWorker} from '@gen-video-tool/worker-client';
 
 export type RenderPhase = 'preparing' | 'rendering' | 'checking' | 'done';
 
@@ -50,6 +52,74 @@ const findBrowserExecutable = (): string | null => {
   return candidates.find((candidate) => fsSync.existsSync(candidate)) ?? null;
 };
 
+const findGodotExecutable = (workspaceRoot: string): string | null => {
+  const developmentRoot = path.resolve(workspaceRoot, '..', '.tools');
+  const candidates = process.platform === 'win32' ? [
+    path.join(workspaceRoot, 'tools', 'godot', 'godot.exe'),
+    path.join(developmentRoot, 'godot-4.7.1', 'Godot_v4.7.1-stable_win64_console.exe'),
+    path.join(developmentRoot, 'godot-4.7.1', 'Godot_v4.7.1-stable_win64.exe'),
+  ] : [path.join(workspaceRoot, 'tools', 'godot', 'godot')];
+  const detection = detectLocalTool('godot', {bundledCandidates: candidates});
+  return detection.executable ?? null;
+};
+
+const prepareMeshActors = async (
+  project: ProjectDocument,
+  projectRoot: string,
+  runtimeRoot: string,
+  workspaceRoot: string,
+): Promise<ProjectDocument> => {
+  const runtimeProject = structuredClone(project);
+  const meshActors = runtimeProject.shots.flatMap((shot) =>
+    shot.actors.filter((actor) => actor.mode === 'mesh').map((actor) => ({shot, actor})),
+  );
+  if (!meshActors.length) return runtimeProject;
+  const godot = findGodotExecutable(workspaceRoot);
+  if (!godot) throw new Error('MESH_WORKER_UNAVAILABLE:set GODOT_PATH or install the bundled Godot runtime');
+  for (const {shot, actor} of meshActors) {
+    const texturePath = path.join(projectRoot, ...actor.sourcePath.split('/'));
+    const rigPath = path.join(projectRoot, ...actor.rigPath.split('/'));
+    const rig = rigSchema.parse(JSON.parse(await fs.readFile(rigPath, 'utf8')));
+    const relativeDirectory = `generated/motion/${shot.id}/${actor.id}`;
+    const outputDirectory = path.join(runtimeRoot, ...relativeDirectory.split('/'));
+    await fs.mkdir(outputDirectory, {recursive: true});
+    const result = await runMotionWorker(godot, {
+      protocolVersion: 1,
+      requestId: `${project.manifest.projectId}-${shot.id}-${actor.id}-${Date.now()}`,
+      projectId: project.manifest.projectId,
+      actorId: actor.id,
+      texturePath,
+      rigPath,
+      action: {
+        template: actor.actionTemplate ?? 'idle-breathe',
+        durationInFrames: shot.durationFrames,
+        startFrame: actor.actionStartFrame,
+        ...(actor.actionDurationFrames ? {activeDurationInFrames: actor.actionDurationFrames} : {}),
+        fps: project.manifest.fps,
+        amplitude: actor.actionStrength,
+      },
+      output: {
+        directory: outputDirectory,
+        format: 'png-sequence',
+        width: rig.canvas.width,
+        height: rig.canvas.height,
+        cleanupFrames: false,
+      },
+    }, {projectPath: path.join(workspaceRoot, 'motion-worker', 'godot'), timeoutMs: 300_000});
+    if (result.status !== 'complete' || !result.hasAlpha || result.frameCount !== shot.durationFrames) {
+      throw new Error(`MESH_WORKER_FAILED:${shot.id}:${actor.id}:${JSON.stringify(result.error ?? result)}`);
+    }
+    actor.renderedAsset = {
+      format: 'png-sequence',
+      directory: relativeDirectory,
+      frameCount: result.frameCount,
+      fps: result.fps ?? project.manifest.fps,
+      filePrefix: 'frame_',
+    };
+  }
+  return runtimeProject;
+};
+
 const run = async (executable: string, args: string[]): Promise<void> =>
   new Promise((resolve, reject) => {
     const child = spawn(executable, args, {shell: false, windowsHide: true, stdio: ['ignore', 'ignore', 'pipe']});
@@ -75,11 +145,12 @@ export const renderProjectDirectory = async (options: RenderProjectOptions): Pro
   await fs.mkdir(path.dirname(runtimeRoot), {recursive: true});
   await fs.cp(options.projectRoot, runtimeRoot, {recursive: true});
   try {
+    const runtimeProject = await prepareMeshActors(project, options.projectRoot, runtimeRoot, options.workspaceRoot);
     const serveUrl = await bundle({
       entryPoint: path.join(options.workspaceRoot, 'packages', 'remotion-engine', 'src', 'entry.ts'),
       publicDir: path.join(options.workspaceRoot, 'public'),
     });
-    const inputProps = {project, assetBase: `runtime/${runtimeId}`};
+    const inputProps = {project: runtimeProject, assetBase: `runtime/${runtimeId}`};
     const browserExecutable = findBrowserExecutable();
     const compositions = await getCompositions(serveUrl, {inputProps, browserExecutable});
     const composition = compositions.find((item) => item.id === 'GenVideoProject');

@@ -2,7 +2,7 @@ import React from 'react';
 import {Img} from 'remotion';
 import type {Layer, Transform} from '@gen-video-tool/schema';
 import type {CompiledMotionPlan, LayerParallaxSample} from '@gen-video-tool/motion-core';
-import {eventsForRole} from '@gen-video-tool/motion-core';
+import {eventsForRole, sampleBallisticProp} from '@gen-video-tool/motion-core';
 import {combineMotionStyles, motionStyleToCss, sampleEvent} from './animation';
 import {resolveAssetSource} from './asset-source';
 
@@ -22,14 +22,17 @@ export const PaperLayer: React.FC<{
 }> = ({layer, layerIndex, frame, plan, parallax, assetBase}) => {
   if (!layer.visible) return null;
   const base = {...defaultTransform, ...layer.transform};
+  const physical = layer.physicalMotion
+    ? sampleBallisticProp(layer.physicalMotion, frame, base)
+    : base;
   const recipeEvents = eventsForRole(plan, layer.role);
   const styles = recipeEvents.map((event) => sampleEvent(event, frame, layerIndex));
   const motion = motionStyleToCss(combineMotionStyles(styles));
   const transform = [
     layer.role === 'background' ? '' : 'translate(-50%, -50%)',
-    `translate3d(${base.x + parallax.x * 1080}px, ${base.y + parallax.y * 1920}px, 0)`,
-    `rotate(${base.rotation}deg)`,
-    `scale(${base.scaleX * parallax.scale}, ${base.scaleY * parallax.scale})`,
+    `translate3d(${physical.x + parallax.x * 1080}px, ${physical.y + parallax.y * 1920}px, 0)`,
+    `rotate(${physical.rotation}deg)`,
+    `scale(${physical.scaleX * parallax.scale}, ${physical.scaleY * parallax.scale})`,
     motion.motionTransform,
   ].filter(Boolean).join(' ');
   const common: React.CSSProperties = {

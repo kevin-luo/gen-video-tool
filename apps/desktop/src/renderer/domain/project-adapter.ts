@@ -1,4 +1,4 @@
-import type {Actor, ProjectDocument, ShotDocument, TransitionType} from '@gen-video-tool/schema';
+import type {Actor, MeshActionTemplate, ProjectDocument, ShotDocument, TransitionType} from '@gen-video-tool/schema';
 import type {ProjectPayload} from '../../shared/desktop-api';
 import type {ActorConfig, CameraMove, ProjectModel, ShotModel, Transition} from './editor';
 
@@ -19,14 +19,16 @@ const transitionToUi = (type: TransitionType): Transition => ({
 } satisfies Record<TransitionType, Transition>)[type];
 
 const actorConfig = (actor: Actor | undefined): ActorConfig => {
-  if (!actor) return {mode: 'rigid', availableModes: [], action: '无人物', poseA: '—', poseB: '—', switchCover: 'hard-cut'};
+  if (!actor) return {id: 'no-actor', mode: 'rigid', availableModes: [], action: '无人物', actionStrength: 0, poseA: '—', poseB: '—', switchCover: 'hard-cut'};
   if (actor.mode === 'pose-cut') {
     const first = actor.poses[0];
     const second = actor.poses[1];
     return {
+      id: actor.id,
       mode: actor.mode,
       availableModes: [actor.mode],
       action: '完整姿态硬切',
+      actionStrength: 0,
       poseA: first?.sourcePath ?? '—',
       poseB: second?.sourcePath ?? '—',
       switchCover: actor.transition.type === 'flash-frame' ? 'flash-frame'
@@ -35,9 +37,13 @@ const actorConfig = (actor: Actor | undefined): ActorConfig => {
     };
   }
   return {
+    id: actor.id,
     mode: actor.mode,
     availableModes: [actor.mode],
     action: actor.mode === 'mesh' ? actor.actionTemplate ?? 'idle-breathe' : actor.motion[0] ?? 'shadow-settle',
+    actionStrength: actor.mode === 'mesh' ? actor.actionStrength : 0,
+    sourcePath: actor.sourcePath,
+    ...(actor.mode === 'mesh' ? {rigPath: actor.rigPath} : {}),
     poseA: actor.sourcePath,
     poseB: '—',
     switchCover: 'hard-cut',
@@ -74,7 +80,7 @@ export const buildProjectModel = (payload: ProjectPayload): ProjectModel => ({
       depth: Math.round(layer.depth * 100),
       visible: layer.visible,
     })),
-    actor: actorConfig(shot.actors[0]),
+    actor: actorConfig(shot.actors.find((actor) => actor.mode === 'mesh') ?? shot.actors[0]),
     palette: (['sand', 'ink', 'rust', 'olive'] as const)[index % 4] ?? 'sand',
   })),
 });
@@ -124,6 +130,14 @@ export const materializeProjectDocument = (model: ProjectModel): ProjectDocument
             rotation: ui.rotation, opacity: layer.transform?.opacity ?? 1,
             anchorX: layer.transform?.anchorX ?? 0.5, anchorY: layer.transform?.anchorY ?? 0.5,
           },
+        };
+      }),
+      actors: source.actors.map((actor) => {
+        if (actor.id !== uiShot.actor.id || actor.mode !== 'mesh') return actor;
+        return {
+          ...actor,
+          actionTemplate: uiShot.actor.action as MeshActionTemplate,
+          actionStrength: Math.min(1, Math.max(0, uiShot.actor.actionStrength)),
         };
       }),
       ...(source.title ? {title: {...source.title, text: uiShot.title}} : {}),

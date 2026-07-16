@@ -4,9 +4,14 @@ import type {ProjectDocument} from '@gen-video-tool/schema';
 import {ShotScene} from './ShotScene';
 import {resolveAssetSource} from './asset-source';
 
-export type ProjectVideoProps = {project: ProjectDocument; assetBase: string};
+export type ProjectVideoProps = {
+  project: ProjectDocument;
+  assetBase: string;
+  /** Desktop preview only. Deterministic exports must keep this false so missing Worker output fails loudly. */
+  allowUnrenderedMesh?: boolean;
+};
 
-export const ProjectVideo: React.FC<ProjectVideoProps> = ({project, assetBase}) => {
+export const ProjectVideo: React.FC<ProjectVideoProps> = ({project, assetBase, allowUnrenderedMesh = false}) => {
   let cursor = 0;
   return (
     <AbsoluteFill style={{background: '#181511'}}>
@@ -22,6 +27,7 @@ export const ProjectVideo: React.FC<ProjectVideoProps> = ({project, assetBase}) 
               fps={project.manifest.fps}
               aspectRatio={project.manifest.canvas.aspectRatio}
               assetBase={assetBase}
+              allowUnrenderedMesh={allowUnrenderedMesh}
             />
           </Sequence>
         );

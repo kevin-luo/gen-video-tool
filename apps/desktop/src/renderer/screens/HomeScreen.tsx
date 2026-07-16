@@ -1,10 +1,11 @@
 import {useEffect, useState} from 'react';
-import {ArchiveRestore, Film, FolderOpen, Plus, Search, Trash2, Upload} from 'lucide-react';
+import {ArchiveRestore, Film, FolderOpen, Plus, Search, Store, Trash2, Upload} from 'lucide-react';
 import type {CreateProjectRequest, RecentProject} from '../../shared/desktop-api';
 import {IconButton} from '../components/IconButton';
 import {Modal} from '../components/Modal';
 import {ProjectCover} from '../components/ProjectCover';
 import {desktopService} from '../services/desktop-service';
+import {TemplateMarketDialog} from '../editor/TemplateMarketDialog';
 
 interface HomeScreenProps {
   busy: boolean;
@@ -19,6 +20,7 @@ export function HomeScreen({busy, error, onImport, onOpenProject, onProjectCreat
   const [query, setQuery] = useState('');
   const [showCreate, setShowCreate] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<RecentProject | null>(null);
+  const [showTemplates, setShowTemplates] = useState(false);
   const [name, setName] = useState('未命名纸片视频');
   const [aspect, setAspect] = useState<CreateProjectRequest['aspectRatio']>('9:16');
 
@@ -49,6 +51,7 @@ export function HomeScreen({busy, error, onImport, onOpenProject, onProjectCreat
           <span>Gen Video Tool</span>
         </div>
         <div className="home-header__actions">
+          <button className="button button--ghost" type="button" onClick={() => setShowTemplates(true)}><Store size={16} /> 模板目录</button>
           <button className="button button--ghost" type="button" onClick={() => setShowCreate(true)}>
             <Plus size={16} /> 新建项目
           </button>
@@ -156,6 +159,7 @@ export function HomeScreen({busy, error, onImport, onOpenProject, onProjectCreat
           <p>确定删除“{deleteTarget.name}”吗？此操作无法从应用内撤销。</p>
         </Modal>
       ) : null}
+      {showTemplates ? <TemplateMarketDialog onClose={() => setShowTemplates(false)} /> : null}
     </main>
   );
 }
