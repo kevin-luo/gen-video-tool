@@ -31,10 +31,11 @@ export type DiagnosticCode =
   | 'STAGING_CLEANUP_FAILED'
   | 'DESTINATION_EXISTS'
   | 'ATOMIC_COMMIT_FAILED'
-  | 'MANIFEST_MISSING'
-  | 'MANIFEST_MULTIPLE'
+  | 'PRODUCTION_PLAN_MISSING'
+  | 'PRODUCTION_PLAN_MULTIPLE'
   | 'JSON_CORRUPT'
-  | 'SCHEMA_INVALID'
+  | 'PRODUCTION_PLAN_INVALID'
+  | 'GENERATED_ARTIFACT_FORBIDDEN'
   | 'REFERENCE_PATH_INVALID'
   | 'REFERENCE_MISSING'
   | 'REFERENCE_OUTSIDE_PACK'
@@ -54,14 +55,7 @@ export type DiagnosticCode =
   | 'AUDIO_DURATION_MISSING'
   | 'AUDIO_DURATION_MISMATCH'
   | 'AUDIO_TOO_SHORT'
-  | 'AUDIO_TOO_LONG'
-  | 'ACTOR_MODE_UNSUPPORTED'
-  | 'ACTOR_ASSET_MISSING'
-  | 'MESH_RIG_MISSING'
-  | 'MESH_RIG_INVALID'
-  | 'POSE_CUT_TOO_FEW_POSES'
-  | 'POSE_CUT_CROSSFADE_FORBIDDEN'
-  | 'POSE_CUT_MULTIPLE_VISIBLE_POSES';
+  | 'AUDIO_TOO_LONG';
 
 /** A stable, serializable problem record suitable for Electron IPC. */
 export interface AssetPackDiagnostic {
@@ -107,7 +101,7 @@ export interface InspectAssetPackRequest {
 export interface ImportAssetPackRequest extends InspectAssetPackRequest {
   /** Existing directory under which a new project directory is atomically created. */
   projectsRoot: string;
-  /** Optional destination directory name. Defaults to the validated manifest projectId. */
+  /** Optional destination directory name. Defaults to the validated production.json projectId. */
   destinationName?: string;
 }
 
@@ -122,6 +116,9 @@ export interface AssetPackInspection {
   totalBytes: number;
   videoDurationSeconds: number | null;
   audioDurationSeconds: number | null;
+  /** 3 after production.json parses as v3; null when no valid plan could be identified. */
+  productionSchemaVersion: 3 | null;
+  generatedPerformanceShotCount: number;
 }
 
 export interface AssetPackImportResult extends Omit<AssetPackInspection, 'status'> {

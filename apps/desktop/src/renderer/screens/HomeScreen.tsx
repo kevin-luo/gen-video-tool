@@ -1,40 +1,41 @@
 import {useEffect, useState} from 'react';
-import {ArchiveRestore, Film, FolderOpen, Plus, Search, Store, Trash2, Upload} from 'lucide-react';
-import type {CreateProjectRequest, RecentProject} from '../../shared/desktop-api';
+import {Film, HardDrive, Search, ShieldCheck, Trash2, Upload} from 'lucide-react';
+import type {RecentProject} from '../../shared/desktop-api';
 import {IconButton} from '../components/IconButton';
 import {Modal} from '../components/Modal';
 import {ProjectCover} from '../components/ProjectCover';
+import {WorkflowSteps} from '../components/WorkflowSteps';
 import {desktopService} from '../services/desktop-service';
-import {TemplateMarketDialog} from '../editor/TemplateMarketDialog';
 
 interface HomeScreenProps {
   busy: boolean;
   error: string | null;
   onImport: () => void;
   onOpenProject: (projectId: string) => void;
-  onProjectCreated: (projectId: string) => void;
 }
 
-export function HomeScreen({busy, error, onImport, onOpenProject, onProjectCreated}: HomeScreenProps) {
+const UPDATED_AT_FORMATTER = new Intl.DateTimeFormat('zh-CN', {
+  month: 'numeric',
+  day: 'numeric',
+  hour: '2-digit',
+  minute: '2-digit',
+});
+
+const formatUpdatedAt = (updatedAt: string): string => {
+  const timestamp = new Date(updatedAt);
+  return Number.isNaN(timestamp.getTime()) ? '更新时间未知' : UPDATED_AT_FORMATTER.format(timestamp);
+};
+
+export function HomeScreen({busy, error, onImport, onOpenProject}: HomeScreenProps) {
   const [projects, setProjects] = useState<RecentProject[]>([]);
   const [query, setQuery] = useState('');
-  const [showCreate, setShowCreate] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<RecentProject | null>(null);
-  const [showTemplates, setShowTemplates] = useState(false);
-  const [name, setName] = useState('未命名纸片视频');
-  const [aspect, setAspect] = useState<CreateProjectRequest['aspectRatio']>('9:16');
 
   useEffect(() => {
     void desktopService.listRecentProjects().then(setProjects);
   }, []);
 
   const filtered = projects.filter((project) => project.name.toLocaleLowerCase().includes(query.toLocaleLowerCase()));
-
-  const createProject = async () => {
-    const project = await desktopService.createProject({name, aspectRatio: aspect});
-    setShowCreate(false);
-    onProjectCreated(project.id);
-  };
 
   const deleteProject = async () => {
     if (!deleteTarget) return;
@@ -51,12 +52,9 @@ export function HomeScreen({busy, error, onImport, onOpenProject, onProjectCreat
           <span>Gen Video Tool</span>
         </div>
         <div className="home-header__actions">
-          <button className="button button--ghost" type="button" onClick={() => setShowTemplates(true)}><Store size={16} /> 模板目录</button>
-          <button className="button button--ghost" type="button" onClick={() => setShowCreate(true)}>
-            <Plus size={16} /> 新建项目
-          </button>
+          <span className="local-only-label"><ShieldCheck size={15} /> 全程本地处理</span>
           <button className="button button--primary" type="button" onClick={onImport} disabled={busy}>
-            <Upload size={16} /> 导入资产包
+            <Upload size={16} /> {busy ? '正在检查…' : '导入资产包'}
           </button>
         </div>
       </header>
@@ -64,21 +62,18 @@ export function HomeScreen({busy, error, onImport, onOpenProject, onProjectCreat
       <section className="home-content" aria-labelledby="home-title">
         {error ? <div className="inline-note inline-note--error" role="alert">{error}</div> : null}
         <div className="home-intro">
-          <div>
-            <p className="eyebrow">本地视频工作台</p>
-            <h1 id="home-title">继续你的纸片叙事</h1>
-            <p>导入结构化资产包，检查镜头，再用固定运动模板完成剪辑与导出。</p>
+          <div className="home-intro__copy">
+            <p className="eyebrow">Gen Video v3 · 本地制作</p>
+            <h1 id="home-title">从资产包到成片，<br />都留在你的电脑里</h1>
+            <p>导入网页版 ChatGPT 生成的结构化资产包，在本机完成 WanGP 画面生成、候选审片、F5-TTS 旁白和 Remotion 合成。</p>
+            <div className="home-intro__action">
+              <button type="button" className="button button--primary button--large" onClick={onImport} disabled={busy}>
+                <Upload size={17} /> 选择 ZIP 或项目目录
+              </button>
+              <small><HardDrive size={14} /> 模型、素材和生成结果不会上传</small>
+            </div>
           </div>
-          <div className="home-intro__shortcuts" aria-label="快捷操作">
-            <button type="button" className="shortcut-card" onClick={onImport}>
-              <span className="shortcut-card__icon"><ArchiveRestore size={20} /></span>
-              <span><strong>检查资产包</strong><small>ZIP 或项目目录</small></span>
-            </button>
-            <button type="button" className="shortcut-card" onClick={() => setShowCreate(true)}>
-              <span className="shortcut-card__icon"><FolderOpen size={20} /></span>
-              <span><strong>从空项目开始</strong><small>稍后添加镜头资产</small></span>
-            </button>
-          </div>
+          <WorkflowSteps current="assets" />
         </div>
 
         <div className="section-heading">
@@ -94,10 +89,10 @@ export function HomeScreen({busy, error, onImport, onOpenProject, onProjectCreat
         </div>
 
         <div className="project-grid">
-          {filtered.map((project, index) => (
+          {filtered.map((project) => (
             <article className="project-card" key={project.id}>
               <button type="button" className="project-card__open" onClick={() => onOpenProject(project.id)} aria-label={`打开 ${project.name}`}>
-                <ProjectCover variant={index === 0 ? 'football' : 'story'} />
+                <ProjectCover project={project} />
               </button>
               <div className="project-card__meta">
                 <div>
@@ -111,44 +106,20 @@ export function HomeScreen({busy, error, onImport, onOpenProject, onProjectCreat
               <div className="project-card__footer">
                 <span className={`status-dot status-dot--${project.status}`} />
                 <span>{project.status === 'ready' ? '可导出' : project.status === 'draft' ? '草稿' : '需要处理'}</span>
-                <time dateTime={project.updatedAt}>{index === 0 ? '刚刚编辑' : '昨天编辑'}</time>
+                <time dateTime={project.updatedAt}>{formatUpdatedAt(project.updatedAt)}</time>
               </div>
             </article>
           ))}
-          <button type="button" className="project-card project-card--new" onClick={() => setShowCreate(true)}>
-            <span><Plus size={22} /></span>
-            <strong>新建空白项目</strong>
-            <small>创建画幅后进入编辑器</small>
-          </button>
+          {!filtered.length ? (
+            <div className="project-empty">
+              <HardDrive size={24} />
+              <div><strong>{query ? '没有匹配的本地项目' : '还没有本地项目'}</strong><small>{query ? '换一个关键词，或导入新的资产包。' : '从 ChatGPT 资产包开始第一条视频。'}</small></div>
+              {!query ? <button type="button" className="button button--quiet" onClick={onImport}><Upload size={15} /> 导入第一个资产包</button> : null}
+            </div>
+          ) : null}
         </div>
       </section>
 
-      {showCreate ? (
-        <Modal
-          title="新建项目"
-          description="先确定项目名称和画幅，镜头与素材可稍后添加。"
-          onClose={() => setShowCreate(false)}
-          footer={
-            <>
-              <button type="button" className="button button--ghost" onClick={() => setShowCreate(false)}>取消</button>
-              <button type="button" className="button button--primary" disabled={!name.trim()} onClick={() => void createProject()}>创建并进入编辑器</button>
-            </>
-          }
-        >
-          <label className="field-stack">
-            <span>项目名称</span>
-            <input value={name} onChange={(event) => setName(event.target.value)} autoFocus />
-          </label>
-          <fieldset className="choice-fieldset">
-            <legend>视频画幅</legend>
-            <div className="segmented-control segmented-control--three">
-              {(['9:16', '16:9', '1:1'] as const).map((value) => (
-                <button key={value} type="button" className={aspect === value ? 'is-active' : ''} onClick={() => setAspect(value)}>{value}</button>
-              ))}
-            </div>
-          </fieldset>
-        </Modal>
-      ) : null}
       {deleteTarget ? (
         <Modal
           title="删除本地项目"
@@ -159,7 +130,6 @@ export function HomeScreen({busy, error, onImport, onOpenProject, onProjectCreat
           <p>确定删除“{deleteTarget.name}”吗？此操作无法从应用内撤销。</p>
         </Modal>
       ) : null}
-      {showTemplates ? <TemplateMarketDialog onClose={() => setShowTemplates(false)} /> : null}
     </main>
   );
 }

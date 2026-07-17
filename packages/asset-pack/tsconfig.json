@@ -16,8 +16,8 @@
     "noEmit": true,
     "types": ["node"],
     "paths": {
-      "@gen-video-tool/schema": ["./../schema/src/index.ts"]
+      "@gen-video-tool/video-generation": ["./../video-generation/src/index.ts"]
     }
   },
-  "include": ["src/**/*.ts", "../schema/src/**/*.ts"]
+  "include": ["src/**/*.ts", "../video-generation/src/**/*.ts"]
 }

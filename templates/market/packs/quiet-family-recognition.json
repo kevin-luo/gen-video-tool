@@ -1,1 +1,0 @@
-{"schemaVersion":1,"id":"quiet-family-recognition","shotPattern":["place","absence","recognition-cue","approach","complete-pose-change","release"],"worldRules":["complete-figure-only","cover-pose-change","eye-line-consistency"],"audio":{"burnedSubtitles":false,"backgroundMusic":false}}

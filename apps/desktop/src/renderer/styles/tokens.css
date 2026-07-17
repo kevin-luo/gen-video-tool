@@ -43,6 +43,7 @@
   --text-tertiary: var(--primitive-neutral-500);
   --text-on-dark: var(--primitive-neutral-50);
   --text-on-accent: var(--primitive-neutral-0);
+  --text-error: var(--primitive-accent-500);
   --border-subtle: var(--primitive-neutral-100);
   --border-default: var(--primitive-neutral-200);
   --border-strong: var(--primitive-neutral-300);
@@ -94,8 +95,8 @@
   --border-width: 0.0625rem;
   --border-heavy: 0.125rem;
 
-  --shadow-card: 0 0.125rem 0.75rem oklch(0.18 0.01 250 / 0.08);
-  --shadow-raised: 0 0.75rem 2.5rem oklch(0.16 0.01 250 / 0.2);
+  --shadow-card: 0 0.0625rem 0.125rem oklch(0.18 0.01 250 / 0.05), 0 0.25rem 0.75rem oklch(0.18 0.01 250 / 0.07);
+  --shadow-raised: 0 0.125rem 0.375rem oklch(0.16 0.01 250 / 0.09), 0 0.75rem 2.5rem oklch(0.16 0.01 250 / 0.16);
   --shadow-focus: 0 0 0 0.1875rem oklch(0.55 0.205 28 / 0.2);
   --shadow-canvas: 0 0.625rem 2.5rem oklch(0.08 0.01 250 / 0.5);
 
@@ -137,6 +138,10 @@
   --thumbnail-height-compact: 4.125rem;
   --timeline-label-width: 6.75rem;
   --scrollbar-size: 0.625rem;
+  --production-sidebar-width: 14rem;
+  --production-preview-height: 15rem;
+  --workflow-marker-size: 2.25rem;
+  --workflow-marker-size-compact: 1.75rem;
   --opacity-disabled: 0.42;
   --opacity-muted: 0.7;
   --opacity-subtle: 0.18;

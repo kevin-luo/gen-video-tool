@@ -1,4 +1,5 @@
 import {AlertTriangle, ArrowLeft, CheckCircle2, FileArchive, RefreshCcw, ShieldCheck, XCircle} from 'lucide-react';
+import {WorkflowSteps} from '../components/WorkflowSteps';
 import type {ValidationReport} from '../domain/editor';
 
 interface ImportScreenProps {
@@ -24,14 +25,15 @@ export function ImportScreen({report, busy, error, onBack, onReselect, onEnterEd
       </header>
 
       <section className="import-content" aria-labelledby="import-title">
+        <WorkflowSteps current="assets" compact />
         <div className="import-titlebar">
           <div className={`validation-seal ${errors ? 'validation-seal--error' : 'validation-seal--success'}`}>
             {errors ? <XCircle size={26} /> : <ShieldCheck size={26} />}
           </div>
           <div>
-            <p className="eyebrow">导入前门禁</p>
+            <p className="eyebrow">v3 生产门禁</p>
             <h1 id="import-title">{errors ? '资产包需要修复' : '资产包可以进入编辑器'}</h1>
-            <p>{errors ? '修复阻断项后重新检查。' : `已通过 ${passes} 项检查，${warnings} 个提醒不会阻止编辑。`}</p>
+            <p>{errors ? '当前版本仅接受完整的 v3 生产契约；修复阻断项后重新检查。' : `已通过 ${passes} 项检查，${warnings} 个提醒不会阻止本地制作。`}</p>
           </div>
         </div>
 
@@ -41,7 +43,7 @@ export function ImportScreen({report, busy, error, onBack, onReselect, onEnterEd
             <h2>{report.projectName}</h2>
             <p className="path-text" title={report.path}>{report.path}</p>
             <dl>
-              <div><dt>协议版本</dt><dd>v{report.manifestVersion}</dd></div>
+              <div><dt>生产契约</dt><dd>Gen Video v{report.manifestVersion}</dd></div>
               <div><dt>镜头</dt><dd>{report.shots}</dd></div>
               <div><dt>文件</dt><dd>{report.files}</dd></div>
               <div><dt>阻断项</dt><dd className={errors ? 'text-error' : 'text-success'}>{errors}</dd></div>
@@ -51,7 +53,7 @@ export function ImportScreen({report, busy, error, onBack, onReselect, onEnterEd
 
           <section className="check-panel" aria-labelledby="check-title">
             <div className="check-panel__header">
-              <div><h2 id="check-title">结构与兼容性</h2><p>所有检查都在本地完成，不会上传素材。</p></div>
+              <div><h2 id="check-title">生产门禁</h2><p>检查关键帧、镜头逻辑、配音输入和安全路径；素材不会上传。</p></div>
               <span>{report.checks.length} 项</span>
             </div>
             <ul className="check-list">
@@ -65,19 +67,12 @@ export function ImportScreen({report, busy, error, onBack, onReselect, onEnterEd
                 </li>
               ))}
             </ul>
-            {warnings ? (
-              <div className="auto-fix-note">
-                <AlertTriangle size={18} />
-                <div><strong>可自动补齐尾部停留</strong><p>导出时保持最后一帧 0.5 秒，旁白结束后不截断画面。</p></div>
-                <button type="button" className="button button--quiet">采用建议</button>
-              </div>
-            ) : null}
           </section>
         </div>
 
         <footer className="import-footer">
-          <p>{error ?? (errors ? '存在阻断项，暂时不能进入编辑器。' : '检查结果将保存在项目日志中。')}</p>
-          <button type="button" className="button button--primary button--large" disabled={errors > 0 || busy} onClick={onEnterEditor}>{busy ? '正在提交…' : '导入并进入编辑器'}</button>
+          <p role={error ? 'alert' : undefined}>{error ?? (errors ? '存在阻断项，暂时不能建立本地项目。' : '通过后会建立独立项目目录，并保留检查记录。')}</p>
+          <button type="button" className="button button--primary button--large" disabled={errors > 0 || busy} onClick={onEnterEditor}>{busy ? '正在建立项目…' : '建立本地项目'}</button>
         </footer>
       </section>
     </main>

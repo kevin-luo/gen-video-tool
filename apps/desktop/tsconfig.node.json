@@ -1,8 +1,16 @@
 {
   "compilerOptions": {
     "target": "ES2023",
-    "module": "NodeNext",
-    "moduleResolution": "NodeNext",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "baseUrl": "../..",
+    "paths": {
+      "@gen-video-tool/asset-pack": ["./packages/asset-pack/src/index.ts"],
+      "@gen-video-tool/local-tts": ["./packages/local-tts/src/index.ts"],
+      "@gen-video-tool/remotion-engine": ["./packages/remotion-engine/src/index.ts"],
+      "@gen-video-tool/render-service": ["./packages/render-service/src/index.ts"],
+      "@gen-video-tool/video-generation": ["./packages/video-generation/src/index.ts"]
+    },
     "lib": ["ES2023"],
     "types": ["node"],
     "strict": true,
@@ -11,6 +19,7 @@
     "resolveJsonModule": true,
     "allowSyntheticDefaultImports": true,
     "esModuleInterop": true,
+    "jsx": "react-jsx",
     "noEmit": true
   },
   "include": ["electron.vite.config.ts", "src/main/**/*.ts", "src/preload/**/*.ts", "src/shared/**/*.ts"]

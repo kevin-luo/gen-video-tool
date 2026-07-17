@@ -1,0 +1,236 @@
+{
+  "schemaVersion": 3,
+  "projectId": "morning-light-v3",
+  "metadata": {
+    "title": "清晨自然光",
+    "locale": "zh-CN"
+  },
+  "networkPolicy": "offline-only",
+  "requiredCapabilities": [
+    "local-f5-tts",
+    "local-i2v",
+    "remotion-render",
+    "ffmpeg",
+    "sidecar-srt"
+  ],
+  "delivery": {
+    "raster": {
+      "width": 1080,
+      "height": 1920,
+      "pixelAspectRatio": 1
+    },
+    "timeline": {
+      "fps": 30,
+      "durationFrames": 101
+    },
+    "video": {
+      "path": "generated/final/morning-light.mp4",
+      "codec": "h264",
+      "pixelFormat": "yuv420p"
+    },
+    "audio": {
+      "path": "generated/audio/narration.wav",
+      "sourceFormat": "wav",
+      "muxCodec": "aac",
+      "muxSampleRate": 48000
+    },
+    "subtitles": {
+      "path": "generated/final/morning-light.srt",
+      "format": "srt",
+      "burnIn": false
+    },
+    "bgm": null
+  },
+  "narration": {
+    "engine": "f5-tts-local",
+    "language": "zh-CN",
+    "referenceAudioPath": "assets/voice-reference.wav",
+    "referenceText": "先说答案：车头撞得越“会坏”，人反而越有机会少受伤，因为溃缩区拿自己的变形，替乘员争取减速时间。",
+    "speed": 1.1,
+    "segments": [
+      {
+        "segmentId": "morning-light-line",
+        "shotId": "open-curtains",
+        "text": "早上还困？拉开窗帘，让天光叫醒你。",
+        "outputPath": "generated/audio/segments/open-curtains.wav"
+      }
+    ],
+    "mergedAudioPath": "generated/audio/narration.wav"
+  },
+  "shots": [
+    {
+      "kind": "generated-performance",
+      "shotId": "open-curtains",
+      "deliveryTimeline": {
+        "startFrame": 0,
+        "durationFrames": 101
+      },
+      "generation": {
+        "engine": "wangp-local-i2v",
+        "conditioning": {
+          "mode": "start-only",
+          "startKeyframePath": "assets/keyframes/shot-01.png"
+        },
+        "preset": {
+          "id": "local-i2v-fast-portrait",
+          "quality": "preview",
+          "conditioning": "start-only",
+          "motionStrength": 1
+        },
+        "raster": {
+          "width": 480,
+          "height": 832
+        },
+        "timeline": {
+          "fps": 24,
+          "frameCount": 81
+        },
+        "conformToDelivery": {
+          "spatialFit": "cover",
+          "focalPoint": {
+            "x": 0.5,
+            "y": 0.52
+          },
+          "temporalFit": "preserve-duration"
+        },
+        "candidateSeeds": [
+          271828,
+          314159
+        ]
+      },
+      "hybridMotion": {
+        "actor": {
+          "id": "woman",
+          "supportingActorIds": [],
+          "action": "pull both curtain panels smoothly outward and settle with the window open",
+          "prompt": "Locked camera. At frame 1, the woman's left and right hands already grip the inner centre edges of the matching curtain panels. In one continuous action, her left hand travels steadily left while her right hand travels steadily right, pulling both panels outward until the window is open. Neither hand releases the fabric or rises toward her face or hair. Both arms extend naturally, her torso stays upright, and both feet remain planted with a small believable weight shift. She settles while still holding both curtain edges. Morning daylight gradually fills the same room. No pause, no scene change, same woman, same clothes, same room.",
+          "negativePrompt": "extra people, extra limbs, duplicated arms, duplicated hands, missing fingers, detached hands, hands near head, hands touching hair, releasing fabric, hand swapping curtain sides, curtains moving without hand contact, fused curtains, morphing face, changing clothes, sliding feet, floating feet, walking away, turning toward camera, frozen body, sudden pose cut, camera pan, camera zoom, camera shake, scene cut, text, subtitles, logo, watermark",
+          "generatedCamera": "locked",
+          "excludedCausalPropIds": []
+        },
+        "world": {
+          "subjectId": "woman",
+          "targetId": "window",
+          "generatedObjectIds": [
+            "left-curtain",
+            "right-curtain"
+          ],
+          "supportSurfaceId": "bedroom-floor",
+          "actionAxis": {
+            "from": {
+              "x": 0.5,
+              "y": 0.76
+            },
+            "to": {
+              "x": 0.5,
+              "y": 0.18
+            }
+          },
+          "milestones": [
+            {
+              "id": "setup",
+              "kind": "setup",
+              "frame": 0
+            },
+            {
+              "id": "grasp-curtains",
+              "kind": "contact",
+              "frame": 1
+            },
+            {
+              "id": "pull-start",
+              "kind": "anticipation",
+              "frame": 8
+            },
+            {
+              "id": "curtains-open",
+              "kind": "follow-through",
+              "frame": 76
+            },
+            {
+              "id": "settle",
+              "kind": "settle",
+              "frame": 92
+            },
+            {
+              "id": "end",
+              "kind": "end",
+              "frame": 100
+            }
+          ],
+          "constraints": {
+            "facing": [
+              {
+                "id": "face-window",
+                "actorId": "woman",
+                "towardTargetId": "window",
+                "bodyAxis": "torso",
+                "fromMilestoneId": "setup",
+                "throughMilestoneId": "end",
+                "maxDeviationDegrees": 25
+              }
+            ],
+            "support": [
+              {
+                "id": "left-foot-grounded",
+                "actorId": "woman",
+                "bodyPart": "left-foot",
+                "surfaceId": "bedroom-floor",
+                "mode": "planted",
+                "fromMilestoneId": "setup",
+                "throughMilestoneId": "end",
+                "maxSlipPixels": 8
+              },
+              {
+                "id": "right-foot-grounded",
+                "actorId": "woman",
+                "bodyPart": "right-foot",
+                "surfaceId": "bedroom-floor",
+                "mode": "planted",
+                "fromMilestoneId": "setup",
+                "throughMilestoneId": "end",
+                "maxSlipPixels": 8
+              }
+            ],
+            "contact": [
+              {
+                "id": "left-hand-grasps-left-curtain",
+                "actorId": "woman",
+                "bodyPart": "left-hand",
+                "target": {
+                  "owner": "generated-world",
+                  "objectId": "left-curtain"
+                },
+                "milestoneId": "grasp-curtains",
+                "kind": "grasp",
+                "toleranceFrames": 1
+              },
+              {
+                "id": "right-hand-grasps-right-curtain",
+                "actorId": "woman",
+                "bodyPart": "right-hand",
+                "target": {
+                  "owner": "generated-world",
+                  "objectId": "right-curtain"
+                },
+                "milestoneId": "grasp-curtains",
+                "kind": "grasp",
+                "toleranceFrames": 1
+              }
+            ]
+          }
+        },
+        "deterministicProps": [],
+        "editorialCamera": {
+          "owner": "editorial-camera",
+          "operation": "push",
+          "strength": 0.1
+        }
+      },
+      "occlusion": {
+        "mode": "none",
+        "requirement": "none"
+      }
+    }
+  ]
+}

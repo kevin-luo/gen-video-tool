@@ -1,19 +1,10 @@
-import {readFile} from 'node:fs/promises';
-import path from 'node:path';
 import {
-  parseManifestDocument,
-  parseProjectDocument,
-  parseShotDocument,
-  rigSchema,
-  type ManifestDocument,
-  type ProjectDocument,
-  type Rig,
-  type ShotDocument,
-} from '@gen-video-tool/schema';
+  parseProductionPlan,
+  type ProductionPlan,
+} from '@gen-video-tool/video-generation';
 import {diagnostic} from './diagnostics';
 import {probeAudio, readUtf8Text, validateImage, type ExpectedImageMetadata} from './media';
 import {normalizeAssetPath, resolveAssetPath} from './paths';
-import {parseSrt} from './srt';
 import type {AssetPackDiagnostic, ImportLimits} from './types';
 
 interface ZodLikeIssue {
@@ -28,43 +19,48 @@ interface ZodLikeError {
 export interface ValidationSummary {
   contentRoot: string;
   relativeFiles: string[];
-  project: ProjectDocument | null;
+  productionPlan: ProductionPlan | null;
   projectId: string | null;
   title: string | null;
   shotCount: number;
   diagnostics: AssetPackDiagnostic[];
   videoDurationSeconds: number | null;
+  /** Duration of the local F5 reference voice, not generated narration. */
   audioDurationSeconds: number | null;
+  productionSchemaVersion: 3 | null;
+  generatedPerformanceShotCount: number;
 }
 
 const jsonPointer = (segments: readonly PropertyKey[]): string => `/${segments
   .map((segment) => String(segment).replace(/~/gu, '~0').replace(/\//gu, '~1'))
   .join('/')}`;
 
-const schemaDiagnostics = (
-  error: unknown,
-  assetPath: string,
-  prefix: readonly PropertyKey[] = [],
-): AssetPackDiagnostic[] => {
+const productionPlanDiagnostics = (error: unknown): AssetPackDiagnostic[] => {
   const issues = (error as ZodLikeError)?.issues;
   if (!Array.isArray(issues) || issues.length === 0) {
-    return [diagnostic('SCHEMA_INVALID', 'error', error instanceof Error ? error.message : 'JSON 不符合资产包 schema。', {
-      assetPath,
-      suggestion: '请使用当前版本的 ChatGPT Asset Director 重新生成 JSON。',
-    })];
+    return [diagnostic(
+      'PRODUCTION_PLAN_INVALID',
+      'error',
+      error instanceof Error ? error.message : 'production.json 不符合 v3 生产契约。',
+      {
+        assetPath: 'production.json',
+        suggestion: '请使用当前 create-gen-video-asset-pack Skill 重新生成资产包。',
+      },
+    )];
   }
   return issues.map((issue) => {
     const message = issue.message ?? '字段无效。';
+    const duplicate = /duplicate/iu.test(message);
     return diagnostic(
-      /duplicate/i.test(message) ? 'DUPLICATE_ID' : 'SCHEMA_INVALID',
+      duplicate ? 'DUPLICATE_ID' : 'PRODUCTION_PLAN_INVALID',
       'error',
       message,
       {
-        path: jsonPointer([...prefix, ...(issue.path ?? [])]),
-        assetPath,
-        suggestion: /duplicate/i.test(message)
-          ? '请确保同一集合内每个 id 唯一。'
-          : '请按 ASSET_SCHEMA.md 修正字段、类型或约束。',
+        path: jsonPointer(issue.path ?? []),
+        assetPath: 'production.json',
+        suggestion: duplicate
+          ? '请确保同一集合内的 id、seed 与输出路径唯一。'
+          : '请按当前 v3 production.json 契约修正字段、类型和跨字段约束。',
       },
     );
   });
@@ -72,41 +68,64 @@ const schemaDiagnostics = (
 
 const parseJsonFile = async (
   absolutePath: string,
-  assetPath: string,
 ): Promise<{value: unknown; diagnostics: AssetPackDiagnostic[]}> => {
   try {
     return {value: JSON.parse(await readUtf8Text(absolutePath)) as unknown, diagnostics: []};
   } catch {
     return {
       value: null,
-      diagnostics: [diagnostic('JSON_CORRUPT', 'error', 'JSON 文件损坏或语法无效。', {
-        assetPath,
-        suggestion: '请去掉注释、尾随逗号并确认文件使用 UTF-8 编码。',
+      diagnostics: [diagnostic('JSON_CORRUPT', 'error', 'production.json 损坏或 JSON 语法无效。', {
+        assetPath: 'production.json',
+        suggestion: '请去掉注释、尾随逗号，并确认文件使用 UTF-8 编码。',
       })],
     };
   }
 };
 
+/** Locate the one v3 project root, allowing one optional top-level wrapper directory. */
 const locateContentRoot = (
   stagingRoot: string,
   extractedFiles: readonly string[],
 ): {contentRoot: string; relativeFiles: string[]; diagnostics: AssetPackDiagnostic[]} => {
   const diagnostics: AssetPackDiagnostic[] = [];
-  const candidates = extractedFiles.filter((file) => file === 'manifest.json' || file.endsWith('/manifest.json'));
+  const candidates = extractedFiles.filter((file) => file === 'production.json' || file.endsWith('/production.json'));
   if (candidates.length === 0) {
-    return {contentRoot: stagingRoot, relativeFiles: [...extractedFiles], diagnostics: [diagnostic('MANIFEST_MISSING', 'error', '资产包中缺少 manifest.json。', {
-      assetPath: 'manifest.json',
-      suggestion: '请把 manifest.json 放在资产包根目录，或唯一的顶层包装目录中。',
-    })]};
+    return {
+      contentRoot: stagingRoot,
+      relativeFiles: [...extractedFiles],
+      diagnostics: [diagnostic('PRODUCTION_PLAN_MISSING', 'error', '资产包中缺少根 production.json。', {
+        assetPath: 'production.json',
+        suggestion: '把 production.json 放在资产包根目录，或唯一的顶层包装目录中。',
+      })],
+    };
   }
   if (candidates.length > 1) {
-    return {contentRoot: stagingRoot, relativeFiles: [...extractedFiles], diagnostics: [diagnostic('MANIFEST_MULTIPLE', 'error', '资产包中存在多个 manifest.json，无法确定项目根目录。', {
-      suggestion: '一个 ZIP 或目录只能包含一个项目。',
-    })]};
+    return {
+      contentRoot: stagingRoot,
+      relativeFiles: [...extractedFiles],
+      diagnostics: [diagnostic('PRODUCTION_PLAN_MULTIPLE', 'error', '资产包中存在多个 production.json，无法确定唯一项目根。', {
+        suggestion: '一个 ZIP 或目录只能包含一个 v3 项目。',
+      })],
+    };
   }
-  const manifestPath = candidates[0];
-  if (!manifestPath) return {contentRoot: stagingRoot, relativeFiles: [...extractedFiles], diagnostics};
-  const prefix = manifestPath === 'manifest.json' ? '' : manifestPath.slice(0, -'manifest.json'.length);
+
+  const productionPath = candidates[0]!;
+  if (productionPath.split('/').length > 2) {
+    return {
+      contentRoot: stagingRoot,
+      relativeFiles: [...extractedFiles],
+      diagnostics: [diagnostic(
+        'PRODUCTION_PLAN_INVALID',
+        'error',
+        'production.json 只能位于资产包根目录或唯一的一层包装目录中。',
+        {
+          assetPath: productionPath,
+          suggestion: '移除多余的嵌套目录，让 production.json 成为根文件或“包装目录/production.json”。',
+        },
+      )],
+    };
+  }
+  const prefix = productionPath === 'production.json' ? '' : productionPath.slice(0, -'production.json'.length);
   const relativeFiles: string[] = [];
   for (const file of extractedFiles) {
     if (!prefix || file.startsWith(prefix)) {
@@ -114,7 +133,7 @@ const locateContentRoot = (
     } else {
       diagnostics.push(diagnostic('UNREFERENCED_FILE', 'warning', '该文件位于项目包装目录之外，提交时不会包含。', {
         assetPath: file,
-        suggestion: '请从 ZIP 中删除多余文件。',
+        suggestion: '从 ZIP 中删除包装目录之外的多余文件。',
       }));
     }
   }
@@ -125,33 +144,52 @@ const locateContentRoot = (
   };
 };
 
+/** Produce path-specific security diagnostics before Zod collapses them into a generic schema issue. */
 const preflightPathFields = (
   value: unknown,
   limits: ImportLimits,
-  assetPath: string,
   pointer: PropertyKey[] = [],
 ): AssetPackDiagnostic[] => {
-  const diagnostics: AssetPackDiagnostic[] = [];
   if (Array.isArray(value)) {
-    value.forEach((child, index) => diagnostics.push(...preflightPathFields(child, limits, assetPath, [...pointer, index])));
-    return diagnostics;
+    return value.flatMap((child, index) => preflightPathFields(child, limits, [...pointer, index]));
   }
-  if (typeof value !== 'object' || value === null) return diagnostics;
+  if (typeof value !== 'object' || value === null) return [];
+  const diagnostics: AssetPackDiagnostic[] = [];
   for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
     const childPointer = [...pointer, key];
     if (/path$/iu.test(key) && typeof child === 'string') {
       const result = normalizeAssetPath(child, limits);
-      for (const item of result.diagnostics) {
-        diagnostics.push({...item, path: jsonPointer(childPointer), assetPath: child});
-      }
+      diagnostics.push(...result.diagnostics.map((item) => ({
+        ...item,
+        path: jsonPointer(childPointer),
+        assetPath: child,
+      })));
     } else {
-      diagnostics.push(...preflightPathFields(child, limits, assetPath, childPointer));
+      diagnostics.push(...preflightPathFields(child, limits, childPointer));
     }
   }
-  return diagnostics.map((item) => item.assetPath === null ? {...item, assetPath} : item);
+  return diagnostics;
 };
 
 const IMAGE_EXTENSION = /\.(?:png|jpe?g|webp|gif|avif|tiff?)$/iu;
+
+const emptySummary = (
+  contentRoot: string,
+  relativeFiles: string[],
+  diagnostics: AssetPackDiagnostic[],
+): ValidationSummary => ({
+  contentRoot,
+  relativeFiles,
+  productionPlan: null,
+  projectId: null,
+  title: null,
+  shotCount: 0,
+  diagnostics,
+  videoDurationSeconds: null,
+  audioDurationSeconds: null,
+  productionSchemaVersion: null,
+  generatedPerformanceShotCount: 0,
+});
 
 export const validateStagedAssetPack = async (
   stagingRoot: string,
@@ -161,274 +199,155 @@ export const validateStagedAssetPack = async (
   const located = locateContentRoot(stagingRoot, extractedFiles);
   const diagnostics = [...located.diagnostics];
   const files = new Set(located.relativeFiles);
-  const referenced = new Set<string>(['manifest.json']);
-  if (!files.has('manifest.json')) {
-    return {
-      contentRoot: located.contentRoot,
-      relativeFiles: located.relativeFiles,
-      project: null,
-      projectId: null,
-      title: null,
-      shotCount: 0,
-      diagnostics,
-      videoDurationSeconds: null,
-      audioDurationSeconds: null,
-    };
+  const referenced = new Set<string>(['production.json']);
+
+  for (const assetPath of files) {
+    if (assetPath.toLocaleLowerCase('en-US').startsWith('generated/')) {
+      diagnostics.push(diagnostic(
+        'GENERATED_ARTIFACT_FORBIDDEN',
+        'error',
+        '源资产包不得包含生成候选、可变状态、旁白输出或最终成片。',
+        {
+          assetPath,
+          suggestion: '删除 generated/。桌面工具会在导入后创建并管理该目录。',
+        },
+      ));
+    }
   }
 
-  const manifestAbsolutePath = resolveAssetPath(located.contentRoot, 'manifest.json');
-  if (!manifestAbsolutePath) throw new Error('Invariant: manifest escaped content root.');
-  const manifestJson = await parseJsonFile(manifestAbsolutePath, 'manifest.json');
-  diagnostics.push(...manifestJson.diagnostics);
-  diagnostics.push(...preflightPathFields(manifestJson.value, limits, 'manifest.json'));
-  let manifest: ManifestDocument | null = null;
-  if (manifestJson.diagnostics.length === 0) {
+  if (!files.has('production.json')) {
+    return emptySummary(located.contentRoot, located.relativeFiles, diagnostics);
+  }
+
+  const productionAbsolutePath = resolveAssetPath(located.contentRoot, 'production.json');
+  if (!productionAbsolutePath) throw new Error('Invariant: production.json escaped content root.');
+  const productionJson = await parseJsonFile(productionAbsolutePath);
+  diagnostics.push(...productionJson.diagnostics);
+  diagnostics.push(...preflightPathFields(productionJson.value, limits));
+
+  let productionPlan: ProductionPlan | null = null;
+  if (productionJson.diagnostics.length === 0) {
     try {
-      manifest = parseManifestDocument(manifestJson.value);
+      productionPlan = parseProductionPlan(productionJson.value);
     } catch (error) {
-      diagnostics.push(...schemaDiagnostics(error, 'manifest.json'));
+      diagnostics.push(...productionPlanDiagnostics(error));
     }
-  }
-  if (!manifest) {
-    return {
-      contentRoot: located.contentRoot,
-      relativeFiles: located.relativeFiles,
-      project: null,
-      projectId: null,
-      title: null,
-      shotCount: 0,
-      diagnostics,
-      videoDurationSeconds: null,
-      audioDurationSeconds: null,
-    };
   }
 
-  const addReference = (
-    referencePath: string,
-    pointer: string,
-    options: {missingCode?: 'REFERENCE_MISSING' | 'ACTOR_ASSET_MISSING' | 'MESH_RIG_MISSING'} = {},
-  ): string | null => {
+  const addInputReference = (referencePath: string, pointer: string): string | null => {
     const normalized = normalizeAssetPath(referencePath, limits);
-    if (!normalized.ok) {
-      diagnostics.push(...normalized.diagnostics.map((item) => ({...item, path: pointer, assetPath: referencePath})));
-      return null;
-    }
     diagnostics.push(...normalized.diagnostics.map((item) => ({...item, path: pointer, assetPath: referencePath})));
+    if (!normalized.ok) return null;
     const normalizedPath = normalized.value.normalized;
     referenced.add(normalizedPath);
     if (!files.has(normalizedPath)) {
-      diagnostics.push(diagnostic(options.missingCode ?? 'REFERENCE_MISSING', 'error', 'JSON 引用的资源文件不存在。', {
+      diagnostics.push(diagnostic('REFERENCE_MISSING', 'error', 'production.json 引用的输入资源不存在。', {
         path: pointer,
         assetPath: normalizedPath,
-        suggestion: '请补齐文件，并确保路径大小写与 manifest/shot JSON 完全一致。',
+        suggestion: '补齐文件，并确保路径大小写与 production.json 完全一致。',
       }));
       return null;
     }
     return normalizedPath;
   };
 
-  const shots: ShotDocument[] = [];
   const images = new Map<string, ExpectedImageMetadata>();
   const registerImage = (
     assetPath: string,
-    jsonPath: string,
+    pointer: string,
     requireAlpha: boolean,
     dimensions?: {width: number; height: number},
   ): void => {
     const absolutePath = resolveAssetPath(located.contentRoot, assetPath);
     if (!absolutePath) {
-      diagnostics.push(diagnostic('REFERENCE_OUTSIDE_PACK', 'error', '资源引用逃逸资产包根目录。', {path: jsonPath, assetPath}));
+      diagnostics.push(diagnostic('REFERENCE_OUTSIDE_PACK', 'error', '图片引用逃逸资产包根目录。', {path: pointer, assetPath}));
       return;
     }
     const current = images.get(assetPath);
+    if (
+      current
+      && dimensions
+      && current.declaredWidth !== undefined
+      && current.declaredHeight !== undefined
+      && (current.declaredWidth !== dimensions.width || current.declaredHeight !== dimensions.height)
+    ) {
+      diagnostics.push(diagnostic('IMAGE_DIMENSIONS_MISMATCH', 'error', '同一关键帧被声明为两组不同的原生生成尺寸。', {
+        path: pointer,
+        assetPath,
+        suggestion: '为不同 WanGP 原生分辨率导出独立关键帧文件。',
+      }));
+      return;
+    }
     images.set(assetPath, {
       assetPath,
       absolutePath,
       requireAlpha: requireAlpha || current?.requireAlpha === true,
-      ...(dimensions ? {declaredWidth: dimensions.width, declaredHeight: dimensions.height} : {}),
-      jsonPath,
+      ...(dimensions
+        ? {declaredWidth: dimensions.width, declaredHeight: dimensions.height}
+        : current?.declaredWidth === undefined
+          ? {}
+          : {declaredWidth: current.declaredWidth, declaredHeight: current.declaredHeight}),
+      jsonPath: current?.jsonPath ?? pointer,
     });
   };
 
-  for (const [shotIndex, shotReference] of manifest.shots.entries()) {
-    const pointer = `/shots/${shotIndex}/path`;
-    const shotPath = addReference(shotReference.path, pointer);
-    if (!shotPath) continue;
-    const shotAbsolute = resolveAssetPath(located.contentRoot, shotPath);
-    if (!shotAbsolute) continue;
-    const shotJson = await parseJsonFile(shotAbsolute, shotPath);
-    diagnostics.push(...shotJson.diagnostics);
-    diagnostics.push(...preflightPathFields(shotJson.value, limits, shotPath));
-    if (shotJson.diagnostics.length > 0) continue;
-    let shot: ShotDocument;
-    try {
-      shot = parseShotDocument(shotJson.value);
-    } catch (error) {
-      const rawActors = typeof shotJson.value === 'object' && shotJson.value !== null && Array.isArray((shotJson.value as {actors?: unknown}).actors)
-        ? (shotJson.value as {actors: unknown[]}).actors
-        : [];
-      rawActors.forEach((actor, actorIndex) => {
-        if (typeof actor !== 'object' || actor === null) return;
-        const raw = actor as Record<string, unknown>;
-        if (typeof raw.mode === 'string' && !['rigid', 'mesh', 'pose-cut'].includes(raw.mode)) {
-          diagnostics.push(diagnostic('ACTOR_MODE_UNSUPPORTED', 'error', `不支持角色模式“${raw.mode}”。`, {
-            path: `/shots/${shotIndex}/actors/${actorIndex}/mode`,
-            assetPath: shotPath,
-            suggestion: '请使用 rigid、mesh 或 pose-cut；不能使用肢体拆分、flip、fold 或 crossfade。',
-          }));
-        }
-        if (raw.mode === 'pose-cut' && Array.isArray(raw.poses) && raw.poses.length < 2) {
-          diagnostics.push(diagnostic('POSE_CUT_TOO_FEW_POSES', 'error', 'Pose Cut 至少需要两个完整人物姿势。', {
-            path: `/shots/${shotIndex}/actors/${actorIndex}/poses`, assetPath: shotPath,
-          }));
-        }
-        const transition = raw.transition;
-        if (raw.mode === 'pose-cut' && typeof transition === 'object' && transition !== null && (transition as {type?: unknown}).type === 'crossfade') {
-          diagnostics.push(diagnostic('POSE_CUT_CROSSFADE_FORBIDDEN', 'error', 'Pose Cut 禁止交叉淡化完整人物。', {
-            path: `/shots/${shotIndex}/actors/${actorIndex}/transition/type`, assetPath: shotPath,
-            suggestion: '使用硬切或能完全遮住人物切换的纸片/道具转场。',
-          }));
-        }
-        if (raw.mode === 'pose-cut' && Array.isArray(raw.poses)) {
-          const visibleCount = raw.poses.filter((pose) => typeof pose === 'object' && pose !== null && (pose as {visible?: unknown}).visible === true).length;
-          if (visibleCount > 1) {
-            diagnostics.push(diagnostic('POSE_CUT_MULTIPLE_VISIBLE_POSES', 'error', '同一时刻只能显示一个完整 Pose Cut 人物。', {
-              path: `/shots/${shotIndex}/actors/${actorIndex}/poses`, assetPath: shotPath,
-            }));
+  let audioDurationSeconds: number | null = null;
+  if (productionPlan) {
+    for (const [shotIndex, shot] of productionPlan.shots.entries()) {
+      const basePointer = `/shots/${shotIndex}`;
+      if (shot.kind === 'layered-collage') {
+        for (const [layerIndex, layer] of shot.layers.entries()) {
+          const pointer = `${basePointer}/layers/${layerIndex}/assetPath`;
+          const assetPath = addInputReference(layer.assetPath, pointer);
+          if (assetPath) {
+            registerImage(
+              assetPath,
+              pointer,
+              ['actor', 'prop', 'foreground', 'overlay'].includes(layer.role),
+            );
           }
         }
-      });
-      diagnostics.push(...schemaDiagnostics(error, shotPath, ['shots', shotIndex]));
-      continue;
-    }
-    if (shot.id !== shotReference.id) {
-      diagnostics.push(diagnostic('SCHEMA_INVALID', 'error', `镜头文件 id“${shot.id}”与 manifest 引用“${shotReference.id}”不一致。`, {
-        path: `/shots/${shotIndex}/id`, assetPath: shotPath,
-      }));
-    }
-    shots.push(shot);
+        continue;
+      }
 
-    for (const [layerIndex, layer] of shot.layers.entries()) {
-      if (!layer.assetPath) continue;
-      const jsonPath = `/shots/${shotIndex}/layers/${layerIndex}/assetPath`;
-      const assetPath = addReference(layer.assetPath, jsonPath);
-      if (assetPath && IMAGE_EXTENSION.test(assetPath)) {
-        registerImage(assetPath, jsonPath, ['subject', 'prop', 'foreground', 'overlay'].includes(layer.role));
+      const {conditioning, raster} = shot.generation;
+      const startPointer = `${basePointer}/generation/conditioning/startKeyframePath`;
+      const startPath = addInputReference(conditioning.startKeyframePath, startPointer);
+      if (startPath) registerImage(startPath, startPointer, false, raster);
+      if (conditioning.mode === 'start-end') {
+        const endPointer = `${basePointer}/generation/conditioning/endKeyframePath`;
+        const endPath = addInputReference(conditioning.endKeyframePath, endPointer);
+        if (endPath) registerImage(endPath, endPointer, false, raster);
+      }
+
+      for (const [propIndex, prop] of shot.hybridMotion.deterministicProps.entries()) {
+        const pointer = `${basePointer}/hybridMotion/deterministicProps/${propIndex}/assetPath`;
+        const assetPath = addInputReference(prop.assetPath, pointer);
+        if (assetPath) registerImage(assetPath, pointer, true);
+      }
+
+      if (shot.occlusion.mode === 'local-matte' && shot.occlusion.foregroundAssetPath) {
+        const pointer = `${basePointer}/occlusion/foregroundAssetPath`;
+        const assetPath = addInputReference(shot.occlusion.foregroundAssetPath, pointer);
+        if (assetPath) registerImage(assetPath, pointer, true);
       }
     }
-    for (const [actorIndex, actor] of shot.actors.entries()) {
-      const basePointer = `/shots/${shotIndex}/actors/${actorIndex}`;
-      if (actor.mode === 'rigid') {
-        const assetPath = addReference(actor.sourcePath, `${basePointer}/sourcePath`, {missingCode: 'ACTOR_ASSET_MISSING'});
-        if (assetPath) registerImage(assetPath, `${basePointer}/sourcePath`, true);
-      } else if (actor.mode === 'pose-cut') {
-        for (const [poseIndex, pose] of actor.poses.entries()) {
-          const assetPath = addReference(pose.sourcePath, `${basePointer}/poses/${poseIndex}/sourcePath`, {missingCode: 'ACTOR_ASSET_MISSING'});
-          if (assetPath) registerImage(assetPath, `${basePointer}/poses/${poseIndex}/sourcePath`, true);
-        }
-      } else {
-        const assetPath = addReference(actor.sourcePath, `${basePointer}/sourcePath`, {missingCode: 'ACTOR_ASSET_MISSING'});
-        if (assetPath) registerImage(assetPath, `${basePointer}/sourcePath`, true);
-        const rigPath = addReference(actor.rigPath, `${basePointer}/rigPath`, {missingCode: 'MESH_RIG_MISSING'});
-        if (!rigPath) continue;
-        const rigAbsolute = resolveAssetPath(located.contentRoot, rigPath);
-        if (!rigAbsolute) continue;
-        const rigJson = await parseJsonFile(rigAbsolute, rigPath);
-        diagnostics.push(...rigJson.diagnostics);
-        diagnostics.push(...preflightPathFields(rigJson.value, limits, rigPath));
-        if (rigJson.diagnostics.length > 0) continue;
-        let rig: Rig;
-        try {
-          rig = rigSchema.parse(rigJson.value);
-        } catch (error) {
-          diagnostics.push(...schemaDiagnostics(error, rigPath, ['shots', shotIndex, 'actors', actorIndex, 'rig']));
-          diagnostics.push(diagnostic('MESH_RIG_INVALID', 'error', 'Mesh Puppet 的 rig.json 无效。', {path: `${basePointer}/rigPath`, assetPath: rigPath}));
-          continue;
-        }
-        const texturePath = addReference(rig.texturePath, `${basePointer}/rig/texturePath`, {missingCode: 'ACTOR_ASSET_MISSING'});
-        if (texturePath) registerImage(texturePath, `${basePointer}/rig/texturePath`, true, rig.canvas);
-        if (rig.texturePath !== actor.sourcePath) {
-          diagnostics.push(diagnostic('MESH_RIG_INVALID', 'error', 'rig.texturePath 必须与 Mesh Actor sourcePath 指向同一张完整人物图。', {
-            path: `${basePointer}/rigPath`, assetPath: rigPath,
-            suggestion: '修改 rig.json 的 texturePath，避免绑定到错误人物。',
-          }));
-        }
+
+    const referenceAudioPath = addInputReference(
+      productionPlan.narration.referenceAudioPath,
+      '/narration/referenceAudioPath',
+    );
+    if (referenceAudioPath) {
+      const referenceAudioAbsolutePath = resolveAssetPath(located.contentRoot, referenceAudioPath);
+      if (referenceAudioAbsolutePath) {
+        const audio = await probeAudio(referenceAudioAbsolutePath, referenceAudioPath);
+        diagnostics.push(...audio.diagnostics);
+        audioDurationSeconds = audio.durationSeconds;
       }
     }
   }
 
-  let project: ProjectDocument | null = null;
-  try {
-    project = parseProjectDocument({schemaVersion: 2, manifest, shots});
-  } catch (error) {
-    diagnostics.push(...schemaDiagnostics(error, 'manifest.json'));
-  }
-
-  const standardReferences: Array<[string | undefined, string]> = [
-    [manifest.narrationPath, '/narrationPath'],
-    [manifest.narrationTextPath, '/narrationTextPath'],
-    [manifest.subtitlesPath, '/subtitlesPath'],
-    [manifest.styleReferencePath, '/styleReferencePath'],
-    [manifest.audio?.narrationPath, '/audio/narrationPath'],
-  ];
-  for (const [assetPath, pointer] of standardReferences) {
-    if (assetPath) addReference(assetPath, pointer);
-  }
-  if (files.has('narration.txt')) referenced.add('narration.txt');
-
-  const videoDurationSeconds = shots.length === manifest.shots.length
-    ? shots.reduce((sum, shot) => sum + shot.durationFrames, 0) / manifest.fps
-    : null;
-  let audioDurationSeconds: number | null = null;
-  const audioPath = manifest.audio?.narrationPath ?? manifest.narrationPath;
-  if (audioPath && files.has(audioPath)) {
-    const absolute = resolveAssetPath(located.contentRoot, audioPath);
-    if (absolute) {
-      const audio = await probeAudio(absolute, audioPath);
-      audioDurationSeconds = audio.durationSeconds;
-      diagnostics.push(...audio.diagnostics);
-      if (audioDurationSeconds !== null && manifest.audio?.durationSeconds !== undefined && Math.abs(audioDurationSeconds - manifest.audio.durationSeconds) > 0.25) {
-        diagnostics.push(diagnostic('AUDIO_DURATION_MISMATCH', 'warning', `JSON 声明时长 ${manifest.audio.durationSeconds.toFixed(2)}s 与实际 ${audioDurationSeconds.toFixed(2)}s 不一致。`, {
-          path: '/audio/durationSeconds', assetPath: audioPath,
-          suggestion: '以实际音频为准更新 durationSeconds。',
-        }));
-      }
-      if (audioDurationSeconds !== null && videoDurationSeconds !== null && audioDurationSeconds + 0.05 < videoDurationSeconds) {
-        diagnostics.push(diagnostic('AUDIO_TOO_SHORT', 'error', `旁白 ${audioDurationSeconds.toFixed(2)}s 短于视频 ${videoDurationSeconds.toFixed(2)}s。`, {
-          path: '/audio/narrationPath', assetPath: audioPath,
-          suggestion: '延长旁白/静音尾部，或缩短镜头总时长。',
-        }));
-      }
-      if (audioDurationSeconds !== null && videoDurationSeconds !== null && audioDurationSeconds > videoDurationSeconds + 0.25) {
-        diagnostics.push(diagnostic('AUDIO_TOO_LONG', 'error', `旁白 ${audioDurationSeconds.toFixed(2)}s 长于视频 ${videoDurationSeconds.toFixed(2)}s，结尾会被截断。`, {
-          path: '/audio/narrationPath', assetPath: audioPath,
-          suggestion: '以实际旁白时长重新分配镜头帧数和外挂 SRT，不要截断或拉伸语音。',
-        }));
-      }
-    }
-  }
-
-  const subtitlesPath = manifest.subtitlesPath;
-  if (subtitlesPath && files.has(subtitlesPath)) {
-    const absolute = resolveAssetPath(located.contentRoot, subtitlesPath);
-    if (absolute) {
-      try {
-        const srt = parseSrt(await readFile(absolute, 'utf8'), subtitlesPath);
-        diagnostics.push(...srt.diagnostics);
-        const lastCue = srt.cues.at(-1);
-        if (lastCue && videoDurationSeconds !== null && lastCue.endMs / 1_000 > videoDurationSeconds + 0.05) {
-          diagnostics.push(diagnostic('SRT_OUTSIDE_VIDEO', 'warning', '最后一条字幕超出视频结尾。', {
-            path: `/cues/${srt.cues.length - 1}/time`, assetPath: subtitlesPath,
-            suggestion: '缩短最后一条字幕或延长镜头。',
-          }));
-        }
-      } catch {
-        diagnostics.push(diagnostic('SRT_CORRUPT', 'error', '无法读取 SRT 字幕文件。', {assetPath: subtitlesPath}));
-      }
-    }
-  }
-
-  // Check every image, including unused files, so a corrupt payload cannot be committed unnoticed.
+  // Validate every raster payload, including unused images, before atomic commit.
   for (const assetPath of files) {
     if (IMAGE_EXTENSION.test(assetPath) && !images.has(assetPath)) {
       const absolutePath = resolveAssetPath(located.contentRoot, assetPath);
@@ -438,25 +357,30 @@ export const validateStagedAssetPack = async (
   const imageDiagnostics = await Promise.all([...images.values()].map((image) => validateImage(image, limits)));
   diagnostics.push(...imageDiagnostics.flat());
 
-  const standardOptionalFiles = new Set(['manifest.json', 'narration.txt', 'style-reference.png', 'subtitles.srt']);
   for (const assetPath of files) {
-    if (!referenced.has(assetPath) && !standardOptionalFiles.has(assetPath)) {
-      diagnostics.push(diagnostic('UNREFERENCED_FILE', 'warning', '文件未被 manifest、shot 或 rig 引用。', {
+    if (!referenced.has(assetPath)) {
+      diagnostics.push(diagnostic('UNREFERENCED_FILE', 'warning', '文件未被 production.json 作为输入资源引用。', {
         assetPath,
-        suggestion: '删除多余文件，或在对应 JSON 中显式引用。',
+        suggestion: '删除多余文件，或在 v3 生产计划中显式引用。',
       }));
     }
+  }
+
+  if (!productionPlan) {
+    return emptySummary(located.contentRoot, located.relativeFiles, diagnostics);
   }
 
   return {
     contentRoot: located.contentRoot,
     relativeFiles: located.relativeFiles,
-    project,
-    projectId: manifest.projectId,
-    title: manifest.title,
-    shotCount: project?.shots.length ?? manifest.shots.length,
+    productionPlan,
+    projectId: productionPlan.projectId,
+    title: productionPlan.metadata.title,
+    shotCount: productionPlan.shots.length,
     diagnostics,
-    videoDurationSeconds,
+    videoDurationSeconds: productionPlan.delivery.timeline.durationFrames / productionPlan.delivery.timeline.fps,
     audioDurationSeconds,
+    productionSchemaVersion: 3,
+    generatedPerformanceShotCount: productionPlan.shots.filter((shot) => shot.kind === 'generated-performance').length,
   };
 };

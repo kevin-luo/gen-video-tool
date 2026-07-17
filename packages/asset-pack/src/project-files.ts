@@ -1,41 +1,33 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import {
-  parseManifestDocument,
-  parseProjectDocument,
-  parseShotDocument,
-  type ProjectDocument,
-} from '@gen-video-tool/schema';
+  parseProductionPlan,
+  type ProductionPlan,
+} from '@gen-video-tool/video-generation';
 
 const readJson = async (filePath: string): Promise<unknown> =>
   JSON.parse(await fs.readFile(filePath, 'utf8')) as unknown;
 
-/** Load and re-validate a committed project directory. */
-export const loadProjectDirectory = async (projectRoot: string): Promise<ProjectDocument> => {
+/** Load and re-validate the single immutable v3 project contract. */
+export const loadProjectDirectory = async (projectRoot: string): Promise<ProductionPlan> => {
   const root = path.resolve(projectRoot);
-  const manifest = parseManifestDocument(await readJson(path.join(root, 'manifest.json')));
-  const shots = await Promise.all(manifest.shots.map(async (reference) =>
-    parseShotDocument(await readJson(path.join(root, ...reference.path.split('/')))),
-  ));
-  return parseProjectDocument({schemaVersion: 2, manifest, shots});
+  return parseProductionPlan(await readJson(path.join(root, 'production.json')));
 };
 
-export const projectDurationSeconds = (project: ProjectDocument): number =>
-  project.shots.reduce((sum, shot) => sum + shot.durationFrames, 0) / project.manifest.fps;
+export const projectDurationSeconds = (project: ProductionPlan): number => {
+  const parsed = parseProductionPlan(project);
+  return parsed.delivery.timeline.durationFrames / parsed.delivery.timeline.fps;
+};
 
-/** Persist only schema-owned JSON files, using same-directory atomic replaces. */
-export const saveProjectDirectory = async (projectRoot: string, project: ProjectDocument): Promise<void> => {
-  const parsed = parseProjectDocument(project);
-  const writeAtomic = async (target: string, value: unknown) => {
-    const temporary = `${target}.${process.pid}.tmp`;
-    await fs.mkdir(path.dirname(target), {recursive: true});
-    await fs.writeFile(temporary, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
-    await fs.rename(temporary, target);
-  };
-  await Promise.all(parsed.manifest.shots.map(async (reference) => {
-    const shot = parsed.shots.find((candidate) => candidate.id === reference.id);
-    if (!shot) throw new Error(`SHOT_DOCUMENT_MISSING:${reference.id}`);
-    await writeAtomic(path.join(projectRoot, ...reference.path.split('/')), shot);
-  }));
-  await writeAtomic(path.join(projectRoot, 'manifest.json'), parsed.manifest);
-}
+/**
+ * Atomically replace production.json. Runtime state and generated outputs are deliberately
+ * persisted elsewhere, leaving this file as the single project contract.
+ */
+export const saveProjectDirectory = async (projectRoot: string, project: ProductionPlan): Promise<void> => {
+  const parsed = parseProductionPlan(project);
+  const target = path.join(path.resolve(projectRoot), 'production.json');
+  const temporary = `${target}.${process.pid}.tmp`;
+  await fs.mkdir(path.dirname(target), {recursive: true});
+  await fs.writeFile(temporary, `${JSON.stringify(parsed, null, 2)}\n`, 'utf8');
+  await fs.rename(temporary, target);
+};

@@ -1,0 +1,11 @@
+{
+  "segments": [
+    {
+      "segmentId": "morning-light-line",
+      "shotId": "open-curtains",
+      "text": "早上还困？拉开窗帘，让天光叫醒你。",
+      "startSeconds": 0,
+      "estimatedDurationSeconds": 2.912
+    }
+  ]
+}

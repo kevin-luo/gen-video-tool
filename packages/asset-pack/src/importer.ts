@@ -62,6 +62,8 @@ const asInspection = (
     totalBytes: pipeline.extraction.totalBytes,
     videoDurationSeconds: pipeline.validation?.videoDurationSeconds ?? null,
     audioDurationSeconds: pipeline.validation?.audioDurationSeconds ?? null,
+    productionSchemaVersion: pipeline.validation?.productionSchemaVersion ?? null,
+    generatedPerformanceShotCount: pipeline.validation?.generatedPerformanceShotCount ?? 0,
   };
 };
 

@@ -1,34 +1,6 @@
-import {defineConfig, externalizeDepsPlugin} from 'electron-vite';
-import react from '@vitejs/plugin-react';
-import {resolve} from 'node:path';
+import {createDesktopConfig, findRepositoryRoot} from '../../electron.vite.config';
 
-export default defineConfig({
-  main: {
-    plugins: [externalizeDepsPlugin()],
-    build: {
-      outDir: resolve(import.meta.dirname, 'out/main'),
-      rollupOptions: {
-        input: resolve(import.meta.dirname, 'src/main/index.ts'),
-      },
-    },
-  },
-  preload: {
-    plugins: [externalizeDepsPlugin()],
-    build: {
-      outDir: resolve(import.meta.dirname, 'out/preload'),
-      rollupOptions: {
-        input: resolve(import.meta.dirname, 'src/preload/index.ts'),
-      },
-    },
-  },
-  renderer: {
-    root: resolve(import.meta.dirname, 'src/renderer'),
-    plugins: [react()],
-    build: {
-      outDir: resolve(import.meta.dirname, 'out/renderer'),
-      rollupOptions: {
-        input: resolve(import.meta.dirname, 'src/renderer/index.html'),
-      },
-    },
-  },
-});
+// Keep one desktop build graph and one output directory. Workspace commands
+// intentionally reuse the repository-root factory so they cannot create a
+// stale second copy under apps/desktop/out.
+export default createDesktopConfig(findRepositoryRoot());

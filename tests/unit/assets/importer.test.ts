@@ -2,7 +2,12 @@ import {access, mkdir, mkdtemp, readFile, readdir, realpath, rm, writeFile} from
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {afterEach, describe, expect, it} from 'vitest';
-import {importAssetPack, inspectAssetPack} from '@gen-video-tool/asset-pack';
+import {
+  importAssetPack,
+  inspectAssetPack,
+  loadProjectDirectory,
+  projectDurationSeconds,
+} from '@gen-video-tool/asset-pack';
 import {writeValidAssetPack, zipAssetPack} from '../../fixtures/asset-pack';
 
 const created: string[] = [];
@@ -12,162 +17,227 @@ const temporaryDirectory = async (): Promise<string> => {
   return result;
 };
 
+const readPlan = async (root: string): Promise<Record<string, unknown>> =>
+  JSON.parse(await readFile(path.join(root, 'production.json'), 'utf8')) as Record<string, unknown>;
+
+const writePlan = async (root: string, plan: Record<string, unknown>): Promise<void> => {
+  await writeFile(path.join(root, 'production.json'), JSON.stringify(plan, null, 2));
+};
+
 afterEach(async () => {
   await Promise.all(created.splice(0).map((entry) => rm(entry, {recursive: true, force: true})));
 });
 
-describe('asset pack importer', () => {
-  it('atomically commits a valid directory pack', async () => {
-    const source = await temporaryDirectory();
-    const projects = await temporaryDirectory();
-    await writeValidAssetPack(source, {actor: 'rigid'});
-    const result = await importAssetPack({source: {kind: 'directory', path: source}, projectsRoot: projects});
-    expect(result.status).toBe('committed');
-    expect(result.projectPath).not.toBeNull();
-    expect(await realpath(result.projectPath ?? '')).toBe(await realpath(path.join(projects, 'fixture-project')));
-    expect(JSON.parse(await readFile(path.join(projects, 'fixture-project', 'manifest.json'), 'utf8'))).toMatchObject({projectId: 'fixture-project'});
-    expect((await readdir(projects)).some((entry) => entry.endsWith('.staging'))).toBe(false);
-  });
-
-  it('leaves no destination when any blocking diagnostic exists', async () => {
-    const source = await temporaryDirectory();
-    const projects = await temporaryDirectory();
-    await writeFile(path.join(source, 'not-a-pack.txt'), 'no manifest');
-    const result = await importAssetPack({
-      source: {kind: 'directory', path: source},
-      projectsRoot: projects,
-      destinationName: 'must-not-exist',
-    });
-    expect(result.status).toBe('rejected');
-    expect(result.diagnostics.map((item) => item.code)).toContain('MANIFEST_MISSING');
-    await expect(access(path.join(projects, 'must-not-exist'))).rejects.toThrow();
-    expect((await readdir(projects)).some((entry) => entry.endsWith('.staging'))).toBe(false);
-  });
-
-  it('never overwrites an existing project', async () => {
+describe('v3 asset pack importer', () => {
+  it('atomically commits a valid production.json directory pack', async () => {
     const source = await temporaryDirectory();
     const projects = await temporaryDirectory();
     await writeValidAssetPack(source);
-    const destination = path.join(projects, 'fixture-project');
-    await mkdir(destination);
-    await writeFile(path.join(destination, 'sentinel.txt'), 'keep');
+
     const result = await importAssetPack({source: {kind: 'directory', path: source}, projectsRoot: projects});
-    expect(result.status).toBe('rejected');
-    expect(result.diagnostics.map((item) => item.code)).toContain('DESTINATION_EXISTS');
-    expect(await readFile(path.join(destination, 'sentinel.txt'), 'utf8')).toBe('keep');
+
+    expect(result.status).toBe('committed');
+    expect(result.productionSchemaVersion).toBe(3);
+    expect(result.generatedPerformanceShotCount).toBe(1);
+    expect(result.projectPath).not.toBeNull();
+    expect(await realpath(result.projectPath ?? '')).toBe(await realpath(path.join(projects, 'fixture-project')));
+    const committed = await loadProjectDirectory(result.projectPath ?? '');
+    expect(committed).toMatchObject({schemaVersion: 3, projectId: 'fixture-project'});
+    expect(projectDurationSeconds(committed)).toBeCloseTo(101 / 30);
+    expect((await readdir(projects)).some((entry) => entry.endsWith('.staging'))).toBe(false);
   });
 
-  it('validates ZIP packs and rejects actors without alpha', async () => {
+  it('requires one unique production.json root marker and leaves no destination on rejection', async () => {
+    const missingSource = await temporaryDirectory();
+    const projects = await temporaryDirectory();
+    await writeFile(path.join(missingSource, 'not-a-pack.txt'), 'no production plan');
+    const missing = await importAssetPack({
+      source: {kind: 'directory', path: missingSource},
+      projectsRoot: projects,
+      destinationName: 'must-not-exist',
+    });
+    expect(missing.status).toBe('rejected');
+    expect(missing.productionSchemaVersion).toBeNull();
+    expect(missing.diagnostics.map((item) => item.code)).toContain('PRODUCTION_PLAN_MISSING');
+    await expect(access(path.join(projects, 'must-not-exist'))).rejects.toThrow();
+
+    const multipleSource = await temporaryDirectory();
+    await writeValidAssetPack(path.join(multipleSource, 'first'));
+    await writeValidAssetPack(path.join(multipleSource, 'second'));
+    const multiple = await inspectAssetPack({source: {kind: 'directory', path: multipleSource}});
+    expect(multiple.status).toBe('rejected');
+    expect(multiple.diagnostics.map((item) => item.code)).toContain('PRODUCTION_PLAN_MULTIPLE');
+  });
+
+  it('accepts one wrapper directory but never overwrites an existing project', async () => {
+    const source = await temporaryDirectory();
+    const wrapped = path.join(source, 'downloaded-pack');
+    const projects = await temporaryDirectory();
+    await writeValidAssetPack(wrapped);
+    await writeFile(path.join(source, 'download-note.txt'), 'outside wrapper');
+
+    const first = await importAssetPack({source: {kind: 'directory', path: source}, projectsRoot: projects});
+    expect(first.status).toBe('committed');
+    expect(await readFile(path.join(projects, 'fixture-project', 'production.json'), 'utf8')).toContain('"schemaVersion": 3');
+    expect(first.diagnostics.map((item) => item.code)).toContain('UNREFERENCED_FILE');
+
+    const secondSource = await temporaryDirectory();
+    await writeValidAssetPack(secondSource);
+    await writeFile(path.join(projects, 'fixture-project', 'sentinel.txt'), 'keep');
+    const second = await importAssetPack({source: {kind: 'directory', path: secondSource}, projectsRoot: projects});
+    expect(second.status).toBe('rejected');
+    expect(second.diagnostics.map((item) => item.code)).toContain('DESTINATION_EXISTS');
+    expect(await readFile(path.join(projects, 'fixture-project', 'sentinel.txt'), 'utf8')).toBe('keep');
+  });
+
+  it('rejects production.json nested below more than one wrapper directory', async () => {
+    const source = await temporaryDirectory();
+    await writeValidAssetPack(path.join(source, 'outer', 'inner'));
+
+    const result = await inspectAssetPack({source: {kind: 'directory', path: source}});
+
+    expect(result.status).toBe('rejected');
+    expect(result.productionSchemaVersion).toBeNull();
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({
+      code: 'PRODUCTION_PLAN_INVALID',
+      assetPath: 'outer/inner/production.json',
+    }));
+  });
+
+  it('validates ZIP packs and requires alpha for deterministic props', async () => {
     const source = await temporaryDirectory();
     const output = path.join(await temporaryDirectory(), 'pack.zip');
-    await writeValidAssetPack(source, {actor: 'rigid', actorHasAlpha: false});
+    await writeValidAssetPack(source, {propHasAlpha: false});
     await zipAssetPack(source, output);
     const result = await inspectAssetPack({source: {kind: 'zip', path: output}});
     expect(result.status).toBe('rejected');
     expect(result.diagnostics.map((item) => item.code)).toContain('IMAGE_ALPHA_REQUIRED');
   });
 
-  it('checks actual narration duration against the video', async () => {
-    const source = await temporaryDirectory();
-    await writeValidAssetPack(source, {audioDurationSeconds: 0.2, shotDurationFrames: 30});
-    const result = await inspectAssetPack({source: {kind: 'directory', path: source}});
-    expect(result.diagnostics.map((item) => item.code)).toContain('AUDIO_TOO_SHORT');
+  it('uses native WanGP raster dimensions for every conditioning keyframe', async () => {
+    const mismatch = await temporaryDirectory();
+    await writeValidAssetPack(mismatch, {keyframeWidth: 512, keyframeHeight: 896});
+    const mismatchResult = await inspectAssetPack({source: {kind: 'directory', path: mismatch}});
+    expect(mismatchResult.status).toBe('rejected');
+    expect(mismatchResult.diagnostics.map((item) => item.code)).toContain('IMAGE_DIMENSIONS_MISMATCH');
+
+    const startOnly = await temporaryDirectory();
+    await writeValidAssetPack(startOnly, {mode: 'generated-start-only'});
+    const startOnlyResult = await inspectAssetPack({source: {kind: 'directory', path: startOnly}});
+    expect(startOnlyResult.status).toBe('ready');
+    expect(startOnlyResult.diagnostics.map((item) => item.code)).not.toContain('REFERENCE_MISSING');
   });
 
-  it('reports missing references, duplicate ids and unreferenced files', async () => {
+  it('validates both branches of the generation conditioning union', async () => {
     const source = await temporaryDirectory();
     await writeValidAssetPack(source);
-    const manifestPath = path.join(source, 'manifest.json');
-    const manifest = JSON.parse(await readFile(manifestPath, 'utf8')) as Record<string, unknown>;
-    manifest.styleReferencePath = 'missing/style.png';
-    await writeFile(manifestPath, JSON.stringify(manifest));
-    const shotPath = path.join(source, 'shots', 'shot-01', 'shot.json');
-    const shot = JSON.parse(await readFile(shotPath, 'utf8')) as {layers: unknown[]};
-    shot.layers.push({id: 'background', role: 'prop', assetPath: 'shots/shot-01/background.png'});
-    await writeFile(shotPath, JSON.stringify(shot));
+    await rm(path.join(source, 'assets', 'shots', 'shot-01', 'performance-end.png'));
+    const result = await inspectAssetPack({source: {kind: 'directory', path: source}});
+    expect(result.status).toBe('rejected');
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({
+      code: 'REFERENCE_MISSING',
+      path: '/shots/0/generation/conditioning/endKeyframePath',
+    }));
+  });
+
+  it('validates collage layers and requires alpha for actor/foreground roles', async () => {
+    const valid = await temporaryDirectory();
+    await writeValidAssetPack(valid, {mode: 'layered-collage'});
+    const validResult = await inspectAssetPack({source: {kind: 'directory', path: valid}});
+    expect(validResult.status).toBe('ready');
+    expect(validResult.generatedPerformanceShotCount).toBe(0);
+
+    const opaque = await temporaryDirectory();
+    await writeValidAssetPack(opaque, {mode: 'layered-collage', collageActorHasAlpha: false});
+    const opaqueResult = await inspectAssetPack({source: {kind: 'directory', path: opaque}});
+    expect(opaqueResult.status).toBe('rejected');
+    expect(opaqueResult.diagnostics.map((item) => item.code)).toContain('IMAGE_ALPHA_REQUIRED');
+  });
+
+  it('reports every missing plan input and unreferenced source file', async () => {
+    const source = await temporaryDirectory();
+    await writeValidAssetPack(source);
+    const plan = await readPlan(source);
+    const narration = plan.narration as {referenceAudioPath: string};
+    narration.referenceAudioPath = 'assets/voices/missing.wav';
+    const [shot] = plan.shots as Array<{
+      hybridMotion: {deterministicProps: Array<{assetPath: string}>};
+      occlusion: unknown;
+    }>;
+    shot!.hybridMotion.deterministicProps[0]!.assetPath = 'assets/shots/shot-01/missing-ball.png';
+    shot!.occlusion = {
+      mode: 'local-matte',
+      requirement: 'required',
+      subjectId: 'kicker',
+      engine: 'local-video-matting',
+      outputDirectory: 'generated/mattes/shot-01',
+      outputFormat: 'webm-alpha',
+      foregroundAssetPath: 'assets/shots/shot-01/missing-foreground.png',
+      featherPixels: 2,
+    };
+    (plan.requiredCapabilities as string[]).push('local-video-matting');
+    await writePlan(source, plan);
     await writeFile(path.join(source, 'unused.txt'), 'unused');
 
     const result = await inspectAssetPack({source: {kind: 'directory', path: source}});
-    const codes = result.diagnostics.map((item) => item.code);
-    expect(codes).toContain('REFERENCE_MISSING');
-    expect(codes).toContain('DUPLICATE_ID');
-    expect(codes).toContain('UNREFERENCED_FILE');
+    const missing = result.diagnostics.filter((item) => item.code === 'REFERENCE_MISSING');
+    expect(result.status).toBe('rejected');
+    expect(missing.map((item) => item.path)).toEqual(expect.arrayContaining([
+      '/narration/referenceAudioPath',
+      '/shots/0/hybridMotion/deterministicProps/0/assetPath',
+      '/shots/0/occlusion/foregroundAssetPath',
+    ]));
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({code: 'UNREFERENCED_FILE', assetPath: 'unused.txt'}));
   });
 
-  it('rejects corrupt images and invalid actor modes with actionable codes', async () => {
+  it('rejects corrupt keyframes and corrupt F5 reference audio', async () => {
+    const corruptImage = await temporaryDirectory();
+    await writeValidAssetPack(corruptImage);
+    await writeFile(path.join(corruptImage, 'assets', 'shots', 'shot-01', 'performance-start.png'), 'not an image');
+    const imageResult = await inspectAssetPack({source: {kind: 'directory', path: corruptImage}});
+    expect(imageResult.status).toBe('rejected');
+    expect(imageResult.diagnostics.map((item) => item.code)).toContain('IMAGE_CORRUPT');
+
+    const corruptAudio = await temporaryDirectory();
+    await writeValidAssetPack(corruptAudio, {referenceAudioValid: false});
+    const audioResult = await inspectAssetPack({source: {kind: 'directory', path: corruptAudio}});
+    expect(audioResult.status).toBe('rejected');
+    expect(audioResult.diagnostics.map((item) => item.code)).toEqual(
+      expect.arrayContaining([
+        expect.stringMatching(/^AUDIO_(?:CORRUPT|DURATION_MISSING)$/u),
+      ]),
+    );
+  });
+
+  it('rejects invalid v3 contracts with no schema-v2 fallback', async () => {
     const source = await temporaryDirectory();
     await writeValidAssetPack(source);
-    await writeFile(path.join(source, 'shots', 'shot-01', 'background.png'), 'not an image');
-    const shotPath = path.join(source, 'shots', 'shot-01', 'shot.json');
-    const shot = JSON.parse(await readFile(shotPath, 'utf8')) as {actors: unknown[]};
-    shot.actors.push({id: 'bad', mode: 'split-limbs', sourcePath: 'characters/bad.png'});
-    await writeFile(shotPath, JSON.stringify(shot));
+    const plan = await readPlan(source);
+    plan.schemaVersion = 2;
+    await writePlan(source, plan);
     const result = await inspectAssetPack({source: {kind: 'directory', path: source}});
-    const codes = result.diagnostics.map((item) => item.code);
-    expect(codes).toContain('IMAGE_CORRUPT');
-    expect(codes).toContain('ACTOR_MODE_UNSUPPORTED');
+    expect(result.status).toBe('rejected');
+    expect(result.productionSchemaVersion).toBeNull();
+    expect(result.diagnostics.map((item) => item.code)).toContain('PRODUCTION_PLAN_INVALID');
   });
 
-  it('checks Pose Cut rules before schema rejection', async () => {
-    const source = await temporaryDirectory();
-    await writeValidAssetPack(source);
-    const shotPath = path.join(source, 'shots', 'shot-01', 'shot.json');
-    const shot = JSON.parse(await readFile(shotPath, 'utf8')) as {actors: unknown[]};
-    shot.actors.push({
-      id: 'hero',
-      mode: 'pose-cut',
-      poses: [{id: 'only', sourcePath: 'characters/only.png', fullFigure: true}],
-      transition: {type: 'crossfade', durationFrames: 8},
-    });
-    await writeFile(shotPath, JSON.stringify(shot));
-    const result = await inspectAssetPack({source: {kind: 'directory', path: source}});
-    const codes = result.diagnostics.map((item) => item.code);
-    expect(codes).toContain('POSE_CUT_TOO_FEW_POSES');
-    expect(codes).toContain('POSE_CUT_CROSSFADE_FORBIDDEN');
-  });
+  it('rejects duplicate production ids and source packs containing generated state', async () => {
+    const duplicate = await temporaryDirectory();
+    await writeValidAssetPack(duplicate, {mode: 'layered-collage'});
+    const duplicatePlan = await readPlan(duplicate);
+    const [shot] = duplicatePlan.shots as Array<{layers: Array<{id: string}>}>;
+    shot!.layers[1]!.id = shot!.layers[0]!.id;
+    await writePlan(duplicate, duplicatePlan);
+    const duplicateResult = await inspectAssetPack({source: {kind: 'directory', path: duplicate}});
+    expect(duplicateResult.status).toBe('rejected');
+    expect(duplicateResult.diagnostics.map((item) => item.code)).toContain('DUPLICATE_ID');
 
-  it('validates Mesh Puppet rig presence and declared texture dimensions', async () => {
-    const missingRoot = await temporaryDirectory();
-    await writeValidAssetPack(missingRoot, {actor: 'rigid'});
-    const missingShotPath = path.join(missingRoot, 'shots', 'shot-01', 'shot.json');
-    const missingShot = JSON.parse(await readFile(missingShotPath, 'utf8')) as {actors: Array<Record<string, unknown>>};
-    missingShot.actors = [{id: 'hero', mode: 'mesh', sourcePath: 'characters/hero.png', rigPath: 'characters/rig.json'}];
-    await writeFile(missingShotPath, JSON.stringify(missingShot));
-    const missing = await inspectAssetPack({source: {kind: 'directory', path: missingRoot}});
-    expect(missing.diagnostics.map((item) => item.code)).toContain('MESH_RIG_MISSING');
-
-    const mismatchRoot = await temporaryDirectory();
-    await writeValidAssetPack(mismatchRoot, {actor: 'rigid'});
-    const mismatchShotPath = path.join(mismatchRoot, 'shots', 'shot-01', 'shot.json');
-    const mismatchShot = JSON.parse(await readFile(mismatchShotPath, 'utf8')) as {actors: Array<Record<string, unknown>>};
-    mismatchShot.actors = [{id: 'hero', mode: 'mesh', sourcePath: 'characters/hero.png', rigPath: 'characters/rig.json'}];
-    await writeFile(mismatchShotPath, JSON.stringify(mismatchShot));
-    await writeFile(path.join(mismatchRoot, 'characters', 'rig.json'), JSON.stringify({
-      schemaVersion: 2,
-      texturePath: 'characters/hero.png',
-      canvas: {width: 99, height: 99},
-      bones: [{id: 'root', parentId: null, pivot: {x: 0, y: 0}, tip: {x: 0, y: 10}}],
-      mesh: {
-        vertices: [{x: 0, y: 0}, {x: 10, y: 0}, {x: 0, y: 10}],
-        triangles: [[0, 1, 2]],
-        weights: [[{boneId: 'root', weight: 1}], [{boneId: 'root', weight: 1}], [{boneId: 'root', weight: 1}]],
-      },
-    }));
-    const mismatch = await inspectAssetPack({source: {kind: 'directory', path: mismatchRoot}});
-    expect(mismatch.diagnostics.map((item) => item.code)).toContain('IMAGE_DIMENSIONS_MISMATCH');
-  });
-
-  it('integrates SRT overlap and malformed-time diagnostics', async () => {
-    const overlapRoot = await temporaryDirectory();
-    await writeValidAssetPack(overlapRoot, {subtitles: '\uFEFF1\r\n00:00:00,000 --> 00:00:00,800\r\nA\r\n\r\n2\r\n00:00:00,700 --> 00:00:00,900\r\nB\r\n'});
-    const overlap = await inspectAssetPack({source: {kind: 'directory', path: overlapRoot}});
-    expect(overlap.status).toBe('ready');
-    expect(overlap.diagnostics.map((item) => item.code)).toContain('SRT_OVERLAP');
-
-    const malformedRoot = await temporaryDirectory();
-    await writeValidAssetPack(malformedRoot, {subtitles: '1\n00:61:00,000 --> 00:00:01,000\nBad'});
-    const malformed = await inspectAssetPack({source: {kind: 'directory', path: malformedRoot}});
-    expect(malformed.status).toBe('rejected');
-    expect(malformed.diagnostics.map((item) => item.code)).toContain('SRT_TIME_INVALID');
+    const generated = await temporaryDirectory();
+    await writeValidAssetPack(generated);
+    await mkdir(path.join(generated, 'generated'), {recursive: true});
+    await writeFile(path.join(generated, 'generated', 'production-state.json'), '{}');
+    const generatedResult = await inspectAssetPack({source: {kind: 'directory', path: generated}});
+    expect(generatedResult.status).toBe('rejected');
+    expect(generatedResult.diagnostics.map((item) => item.code)).toContain('GENERATED_ARTIFACT_FORBIDDEN');
   });
 });

@@ -1,55 +1,48 @@
-import {ChevronDown, ChevronUp, Grid2X2, GripVertical, List, Search} from 'lucide-react';
+import {Film, Image, Sparkles} from 'lucide-react';
+import {resolveAssetSource} from '@gen-video-tool/remotion-engine';
 import type {ShotModel} from '../domain/editor';
-import {IconButton} from '../components/IconButton';
-import {ProjectCover} from '../components/ProjectCover';
 
 interface ShotRailProps {
   shots: ShotModel[];
   selectedShotId: string;
+  assetBase: string;
   onSelect: (shotId: string) => void;
-  onReorder: (shotId: string, delta: -1 | 1) => void;
 }
 
-export function ShotRail({shots, selectedShotId, onSelect, onReorder}: ShotRailProps) {
+const statusLabel = (shot: ShotModel): string => {
+  if (shot.kind === 'layered-collage') return '确定性合成';
+  if (shot.state.status === 'awaiting-review') return '等待审片';
+  if (shot.state.status === 'selected' || shot.state.status === 'complete') return '已选片';
+  if (shot.state.status === 'generating') return '生成中';
+  if (shot.state.status === 'failed' || shot.state.status === 'interrupted') return '需要处理';
+  return '待生成';
+};
+
+export function ShotRail({shots, selectedShotId, assetBase, onSelect}: ShotRailProps) {
   return (
     <aside className="shot-rail" aria-label="镜头列表">
       <header className="pane-header">
         <div><strong>镜头列表</strong><span>({shots.length})</span></div>
-        <div className="pane-header__tools">
-          <IconButton compact label="网格视图"><Grid2X2 size={15} /></IconButton>
-          <IconButton compact label="列表视图" className="is-active"><List size={15} /></IconButton>
-          <IconButton compact label="搜索镜头"><Search size={15} /></IconButton>
-        </div>
+        <Film size={16} aria-hidden="true" />
       </header>
       <ol className="shot-list">
-        {shots.map((shot, arrayIndex) => {
+        {shots.map((shot) => {
           const selected = shot.id === selectedShotId;
           return (
             <li key={shot.id} className={`shot-item ${selected ? 'is-selected' : ''}`}>
               {selected ? <span className="torn-registration" aria-hidden="true" /> : null}
-              <button
-                type="button"
-                className="shot-item__main"
-                onClick={() => onSelect(shot.id)}
-                onKeyDown={(event) => {
-                  if (event.altKey && event.key === 'ArrowUp') onReorder(shot.id, -1);
-                  if (event.altKey && event.key === 'ArrowDown') onReorder(shot.id, 1);
-                }}
-                aria-pressed={selected}
-              >
+              <button type="button" className="shot-item__main" onClick={() => onSelect(shot.id)} aria-pressed={selected}>
                 <span className="shot-item__index">{String(shot.index).padStart(2, '0')}</span>
-                <ProjectCover variant="football" compact label={shot.year} />
+                <span className="shot-keyframe-thumb">
+                  <img src={resolveAssetSource(assetBase, shot.previewAssetPath)} alt="" />
+                  {shot.kind === 'generated-performance' ? <Sparkles size={12} /> : <Image size={12} />}
+                </span>
                 <span className="shot-item__copy">
-                  <strong><span className="shot-item__year">{shot.year}</span>{shot.title}</strong>
-                  <small>{shot.duration.toFixed(1)}s</small>
-                  <small>{shot.note}</small>
+                  <strong>{shot.id}</strong>
+                  <small>{shot.durationSeconds.toFixed(1)} 秒 · {statusLabel(shot)}</small>
+                  <small>{shot.title}</small>
                 </span>
               </button>
-              <div className="shot-item__reorder">
-                <GripVertical size={14} aria-hidden="true" />
-                <IconButton compact label={`上移镜头 ${shot.index}`} disabled={arrayIndex === 0} onClick={() => onReorder(shot.id, -1)}><ChevronUp size={13} /></IconButton>
-                <IconButton compact label={`下移镜头 ${shot.index}`} disabled={arrayIndex === shots.length - 1} onClick={() => onReorder(shot.id, 1)}><ChevronDown size={13} /></IconButton>
-              </div>
             </li>
           );
         })}

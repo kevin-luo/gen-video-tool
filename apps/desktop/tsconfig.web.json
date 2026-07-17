@@ -12,6 +12,12 @@
     "forceConsistentCasingInFileNames": true,
     "module": "ESNext",
     "moduleResolution": "Bundler",
+    "baseUrl": "../..",
+    "paths": {
+      "@gen-video-tool/asset-pack": ["./packages/asset-pack/src/index.ts"],
+      "@gen-video-tool/remotion-engine": ["./packages/remotion-engine/src/index.ts"],
+      "@gen-video-tool/video-generation": ["./packages/video-generation/src/index.ts"]
+    },
     "resolveJsonModule": true,
     "isolatedModules": true,
     "noEmit": true,

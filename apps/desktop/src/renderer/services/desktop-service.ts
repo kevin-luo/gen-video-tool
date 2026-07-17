@@ -1,53 +1,41 @@
-import type {AssetPackSelection, CreateProjectRequest, DesktopApi, RecentProject} from '../../shared/desktop-api';
-import {demoPayload} from '../data/demo';
+import type {DesktopApi} from '../../shared/desktop-api';
 
-const fallbackProjects: RecentProject[] = [{
-  id: 'football-history',
-  name: demoPayload.project.manifest.title,
-  updatedAt: new Date().toISOString(),
-  durationSeconds: demoPayload.project.shots.reduce((sum, shot) => sum + shot.durationFrames, 0) / demoPayload.project.manifest.fps,
-  shotCount: demoPayload.project.shots.length,
-  aspectRatio: '9:16',
-  status: 'ready',
-  readOnly: true,
-}];
+const desktopRequired = async (): Promise<never> => {
+  throw new Error('DESKTOP_RUNTIME_REQUIRED:请在 Electron 桌面应用中使用本地模型与文件系统');
+};
 
+/**
+ * The browser fallback exists only so the renderer can display its empty
+ * shell during isolated UI development. It never fabricates projects, media,
+ * provider availability, exports, or successful local-model work.
+ */
 const browserFallback: DesktopApi = {
-  platform: 'win32',
-  selectAssetPack: async (): Promise<AssetPackSelection> => ({
-    handle: 'browser-demo', kind: 'directory', displayPath: 'examples/football-history', name: 'football-history',
-  }),
-  inspectAssetPack: async () => ({
-    status: 'ready', diagnostics: [], projectId: 'football-history', title: demoPayload.project.manifest.title,
-    sourceKind: 'directory', fileCount: 23, totalBytes: 18_000_000, shotCount: 7,
-    videoDurationSeconds: 25.9, audioDurationSeconds: 25.8,
-  }),
-  importAssetPack: async () => ({
-    inspection: {
-      status: 'ready', diagnostics: [], projectId: 'football-history', title: demoPayload.project.manifest.title,
-      sourceKind: 'directory', fileCount: 23, totalBytes: 18_000_000, shotCount: 7,
-      videoDurationSeconds: 25.9, audioDurationSeconds: 25.8,
-    },
-    project: demoPayload,
-  }),
-  listRecentProjects: async () => fallbackProjects,
-  openProject: async () => demoPayload,
-  createProject: async (request: CreateProjectRequest) => ({
-    id: 'football-history', name: request.name, updatedAt: new Date().toISOString(), durationSeconds: 0,
-    shotCount: 1, aspectRatio: request.aspectRatio, status: 'draft', readOnly: true,
-  }),
-  deleteProject: async () => undefined,
-  saveProject: async (_projectId, project) => ({project, assetBase: demoPayload.assetBase, readOnly: true}),
-  exportProject: async () => ({videoName: 'final.mp4', subtitlesName: 'subtitles.srt', qaFrameCount: 3, durationSeconds: 25.9}),
-  cancelExport: async () => undefined,
+  platform: 'browser',
+  selectAssetPack: async () => null,
+  inspectAssetPack: desktopRequired,
+  importAssetPack: desktopRequired,
+  listRecentProjects: async () => [],
+  openProject: desktopRequired,
+  deleteProject: desktopRequired,
+  exportProject: desktopRequired,
+  cancelExport: desktopRequired,
   onExportProgress: () => () => undefined,
-  revealOutput: async () => undefined,
-  loadMeshRig: async () => { throw new Error('MESH_PREVIEW_REQUIRES_DESKTOP'); },
-  renderMeshPreview: async () => { throw new Error('MESH_PREVIEW_REQUIRES_DESKTOP'); },
-  autoRigMesh: async () => { throw new Error('MESH_PREVIEW_REQUIRES_DESKTOP'); },
-  saveMeshRig: async () => { throw new Error('MESH_PREVIEW_REQUIRES_DESKTOP'); },
-  listTemplates: async () => [],
-  installTemplate: async () => { throw new Error('TEMPLATE_INSTALL_REQUIRES_DESKTOP'); },
+  revealOutput: desktopRequired,
+  getProductionSnapshot: async (projectId) => ({
+    projectId,
+    hasPlan: false,
+    readOnly: true,
+    shots: [],
+    error: {code: 'DESKTOP_RUNTIME_REQUIRED', message: '本地生产状态仅在 Electron 桌面运行时可用'},
+  }),
+  detectProductionProvider: desktopRequired,
+  synthesizeProductionNarration: desktopRequired,
+  cancelProductionNarration: desktopRequired,
+  generateProductionShot: desktopRequired,
+  cancelProductionShot: desktopRequired,
+  selectProductionCandidate: desktopRequired,
+  rejectProductionCandidate: desktopRequired,
+  onProductionProgress: () => () => undefined,
 };
 
 export const desktopService: DesktopApi = window.genVideoDesktop ?? browserFallback;

@@ -1,125 +1,176 @@
 # Gen Video Tool
 
-本地优先的纸片动画视频生产工具。它把 ChatGPT/Imagegen 交付的结构化素材包变成可检查、可编辑、可重复渲染的 MP4，不把日常生产绑定在 Codex、Fal 或付费 I2V 上。
+Gen Video Tool 是一套全新的、本地优先的视频生产桌面工具。ChatGPT/Imagegen 负责可移植的源资产包，本机 WanGP 负责连续人物与环境表演，Remotion 负责确定性道具、遮挡、统一运镜和交付合成，F5-TTS 负责本地旁白，FFmpeg 负责媒体规范化与抽帧验收。
 
-![编辑器概念图](docs/design/editor-concept.png)
+项目从 v3 契约起步，不读取旧 manifest、分镜 JSON 或 v2 项目，也不提供迁移兼容层。产品原则见 [`docs/CONTINUITY_CHARTER.md`](docs/CONTINUITY_CHARTER.md)：镜头必须是连续世界，方向先于生成，物理是门禁，模型生成表演底片，编辑器拥有最终影片。
 
-## 实际效果
+## 当前进度
 
-![Mesh Puppet 绑定校正与透明动作预览](docs/design/mesh-puppet-correction.png)
+状态以 2026-07-17 的本地证据为准。
 
-- [足球 Mesh Puppet 成片演示（MP4，含旁白、无 BGM、无烧录字幕）](docs/media/football-mesh-puppet-demo.mp4)
-- [守门员透明人物动作演示（VP9 Alpha WebM）](docs/media/mesh-puppet-alpha-preview.webm)
+| 能力 | 当前状态 | 已验证边界 |
+| --- | --- | --- |
+| v3 项目契约 | 已实现并有测试 | 单一 `production.json`；源资产和 `generated/` 严格分离；没有 v2 回退 |
+| v3 资产包导入 | 已实现并有测试 | 目录/ZIP、安全路径、读取前体积上限、流式解压/CRC、图片与音频探测、引用完整性、原子提交；源包禁止携带 `generated/` |
+| WanGP MCP | 真实本地生成已验证 | 通过官方 MCP stdio 调用本机 Fun InP 1.3B，已得到真实 480×832、24 fps、81 帧视频；MCP Streamable HTTP 传输也已实现 |
+| 双候选与持久状态 | 已实现并有测试 | 两枚固定 seed 串行生成；严格帧数 QA 与人工选择分离；取消有截止时间；导出前重验视频/Matte 哈希和媒体探测 |
+| F5-TTS | 真实本地 WAV 已验证 | 参考音频克隆、分段合成、合并、时长检查和外挂 SRT；v3 项目必须先选定视频才能生成旁白 |
+| Electron 工作流 | 已完成真实端到端验收 | 导入 → 生成 → 审片 → F5-TTS → 动态预览 → 导出；真实桌面导出得到 MP4、SRT 与 20 张 QA 抽帧 |
+| Web Skill → ZIP → 桌面 | 已完成真实回合验收 | 新样片目录经 Skill 校验零警告，确定性组装 ZIP，再由桌面同款导入器检查、原子导入并打开 `offline-only` v3 项目；源图和参考 WAV 哈希保持一致 |
+| 新 v3 样片 | 已完成并通过验收 | [`examples/morning-light-v3`](examples/morning-light-v3/README.md) 已完成双候选、人工拒绝/选择、F5-TTS、Remotion/FFmpeg 交付与抽帧检查 |
 
-## 已实现
+## 已验证样片
 
-- Electron + React 桌面工作台：首页、安全导入检查、三栏编辑器、故事节拍时间线和真实导出进度。
-- ZIP/目录导入门禁：路径穿越、绝对路径、大小写/Unicode 冲突、符号链接、ZIP bomb、重复 ID、丢失引用、图像/Alpha、音频和 SRT 检查。
-- 三种人物协议：Rigid Actor、Godot Mesh Puppet、Pose Cut 完整人物姿态切换。
-- 8 个确定性 Motion Recipes；背景、主体、道具、前景按深度独立视差，标题保持低/零视差。
-- 编辑器预览与最终渲染共用 Remotion 运动求值器。
-- 本地 Remotion + FFmpeg：H.264 MP4、旁白混合、独立 SRT、起/中/末抽帧 QA；默认无 BGM、无烧录字幕。
-- 本地 Godot Worker：读取完整人物 PNG 与 `rig.json`，构建 `Skeleton2D + Bone2D + Polygon2D` 连续网格，加载动作模板并输出透明 PNG 序列、VP9 Alpha WebM 或 ProRes 4444 MOV。
-- Electron Mesh Puppet 校正台：完整人物纹理上的双端骨骼拖拽、方向键微调、当前未保存绑定的透明动作预览、只读提示与 `rig.json` 回写。
-- Phase 4 首版：Alpha 轮廓启发式自动绑定、可选 RIFE 帧插值 Worker、批量导出报告、本地模板目录与安装。
-- 镜头门禁把“镜头语言 + 世界知识 + 物理/流程逻辑”写进结构化数据；足球示例保证球在触球前静止、球离脚后门将才启动。
-- 足球与安静故事两套可验证、可渲染示例。
-- 可安装技能：[`compose-paper-video`](skills/compose-paper-video/SKILL.md)。
+![Gen Video Tool v3 桌面编辑器](docs/design/desktop-v3.png)
 
-## 快速开始
+- [查看最终 MP4](docs/media/morning-light-v3.mp4)
+- [查看 20 帧 QA 联系表](docs/media/morning-light-v3-contact-sheet.jpg)
+- 成片：1080×1920、30 fps、精确 101 帧、H.264/yuv420p/bt709、AAC 48 kHz 单声道；无 BGM、无烧录字幕；
+- 接受候选：seed `314159`，SHA-256 `f9a3d0ac9389cc049d6bb24ef744a2c4824f967022f51c2e7193cb52eb9ea30b`；
+- F5-TTS WAV：SHA-256 `033f1304c562a022cdc8f1fa212a90052a52663e497f206d898c64af3c270013`；
+- 最终 MP4：SHA-256 `1956bda567f171010446c5d161ffe2cfc64de046c1c3f48a3a557f20fbefc987`。
 
-要求 Node.js 22+、npm、Chrome 或 Edge。首次安装 Electron/Remotion 组件需要联网。
+仓库提交便携源资产包和经过验收的轻量演示媒体，不提交本机模型缓存、原始候选或工作状态。完整候选、人工审片记录、F5 缓存和交付副本保留在桌面应用数据目录。
+
+## 桌面工作流
+
+```text
+1. 导入资产
+   production.json + 完整首/尾关键帧 + 透明道具/遮挡 + F5 参考音频
+
+2. 本地生成
+   自动探测 WanGP/GPU/模型 -> 两个固定 seed 串行生成 -> 技术 QA
+
+3. 人工审片
+   检查身份、解剖、方向、支撑、接触时序和镜头稳定性 -> 选择一个候选
+
+4. 交付
+   F5-TTS 旁白 -> Remotion 确定性合成 -> FFmpeg 检查 -> MP4 + 外挂 SRT
+```
+
+没有通过技术 QA 的候选不能选择；没有人工选择的视频镜头不能合成旁白或导出。缺少模型、候选、遮挡或旁白时会明确失败，不会用静态图片冒充生成成功。
+
+交付规则是固定产品约束：
+
+- 1080×1920、30 fps、H.264、yuv420p；
+- 旁白来自本地 F5-TTS，最终复用为 AAC 音轨；
+- 字幕只输出独立 `.srt`，不烧录进视频；
+- `bgm` 必须为 `null`，不自动添加背景音乐；
+- 人物连续动作来自真实视频模型；图形图层只承担标题、图表、道具和明确的静态拼贴镜头。
+
+## v3 项目目录
+
+源资产包是可审计、可复制的只读输入：
+
+```text
+my-project/
+├── production.json               # 唯一项目入口和生产契约
+└── assets/
+    ├── keyframes/                # 完整人物/场景首帧与可选尾帧
+    ├── props/                    # 透明确定性道具
+    ├── mattes/                   # 可选局部遮挡素材
+    └── voice-reference.wav       # F5-TTS 参考音频
+```
+
+桌面端成功导入后才创建可变产物：
+
+```text
+generated/
+├── production-state.json         # 任务、候选、QA、选择与旁白状态
+├── provider/                     # WanGP 任务、ASCII staging 与原始输出
+├── video/                        # 规范化候选视频
+├── review-history/               # 被拒绝尝试与人工审片证据
+├── audio/                        # F5-TTS 分段与合并旁白
+├── cache/                        # 项目隔离的本地运行缓存
+└── final/                        # 最终 MP4 与外挂 SRT
+```
+
+源资产包中出现 `generated/` 会被拒绝，避免把旧候选或伪造完成状态带到另一台电脑。
+
+## 本地运行
+
+要求 Node.js 22.12+、npm、FFmpeg，以及可选的本地 WanGP 与 F5-TTS 环境。
 
 ```bash
 npm install
-npm run typecheck
-npm run test
-npm run validate:examples
+npm run build:desktop
 npm run dev
 ```
 
-只调试 React 渲染层：
+Windows 本地工作区也可以直接启动或重新生成桌面快捷方式：
+
+```powershell
+npm run desktop:launch
+npm run desktop:shortcut
+```
+
+快捷方式只指向根目录唯一的 `out/` 构建，不再使用 `apps/desktop/out/` 的旧构建副本。
+若窗口启动失败，先关闭旧的 Gen Video Tool 实例并重新执行构建；可审计诊断位于 `.desktop-data/logs/desktop.log`（打包版位于 Electron `userData/logs/`）。
+
+### WanGP
+
+推荐让工具直接启动官方 WanGP MCP stdio 进程：
+
+```powershell
+$env:WANGP_ROOT = 'D:\AI\WanGP'                    # 改为你的绝对路径
+$env:WANGP_PYTHON = 'D:\AI\WanGP\env_conda\python.exe'
+$env:WANGP_CACHE_ROOT = 'D:\AI\model-cache\wangp'
+npm run local:production:detect -- examples/morning-light-v3
+```
+
+未设置 `WANGP_ROOT` 时，工具会检查仓库相邻目录、当前磁盘根目录、用户目录和 LocalAppData；公共代码不绑定某台机器的盘符。
+
+也可以连接用户自行启动的官方 Streamable HTTP MCP：
+
+```powershell
+python D:\AI\WanGP\wgp.py --mcp --mcp-transport streamable-http `
+  --mcp-host 127.0.0.1 --mcp-port 7866
+$env:WANGP_MCP_URL = 'http://127.0.0.1:7866/mcp'
+```
+
+Provider 通过 `wangp_list_models`、模型 availability、metadata、defaults 和 schema 发现真实能力；它不猜测 Gradio 或私有 REST 接口。只有模型明确支持尾帧时才提交 start/end conditioning。
+
+WanGP HTTP 传输在底层也只接受 `localhost`、`127.0.0.1` 或 `::1`。stdio 子进程强制 Hugging Face、Transformers、Datasets 与 W&B 离线模式；缺少权重会明确报告 `missing`，不会静默下载。当前机器已在该离线策略下探测到 WanGP `1.10.1`、`fun_inp_1.3B`、PyTorch `2.10.0+cu130`、CUDA `13.0` 与 RTX 3060 Ti。
+
+### F5-TTS
+
+桌面端只调用本机 F5-TTS 环境。它会从 `CONDA_PREFIX`、`CONDA_EXE`、用户 Conda 目录中查找名为 `allhow-f5tts` 的环境；可用 `F5_TTS_ENV_NAME` 修改环境名。也可以显式配置 CLI 与同一环境的 Python：
+
+```powershell
+$env:F5_TTS_CLI = 'D:\AI\f5-tts-env\Scripts\f5-tts_infer-cli.exe' # 改为你的绝对路径
+$env:F5_TTS_PYTHON = 'D:\AI\f5-tts-env\python.exe'
+$env:F5_TTS_DEVICE = 'cuda'       # 无可用 CUDA 时可改为 cpu
+$env:F5_TTS_MODEL = 'F5TTS_v1_Base'
+```
+
+运行时默认开启 Hugging Face/Transformers 离线模式，把 Numba 与 Matplotlib 缓存隔离到项目 `generated/cache/f5-tts/`；缺少本地 CLI、Python、参考 WAV、准确参考文本或模型缓存时会明确失败，不会调用外部 TTS。
+
+### v3 本地生产 CLI
 
 ```bash
-npm run dev:renderer
+npm run validate:production -- examples/morning-light-v3
+npm run local:production:detect -- <本地工作项目目录>
+npm run local:production:generate -- <本地工作项目目录> open-curtains
+npm run local:production:status -- <本地工作项目目录>
+npm run local:production:select -- <本地工作项目目录> open-curtains <实际候选ID>
+npm run narrate:production -- <本地工作项目目录>
+npm run render:production -- <本地工作项目目录> <输出目录>
 ```
 
-## 验收渲染
+`generate` 只生成并检查两个候选，从不自动替用户选片。`examples/morning-light-v3` 是干净源包；请先由桌面端导入，或复制到独立工作目录，再运行会写入 `generated/` 的命令。
+
+### 开发验证
 
 ```bash
-npm run render:football
-npm run render:story
-npm run render:mesh-preview
-npm run render:mesh-webm
-npm run render:batch -- quiet-story football-history
-npm run qa:frames
+npm run typecheck
+npm run test
+npm run test:desktop-startup
+npm run validate:production -- examples/morning-light-v3
+npm run build:desktop
 ```
 
-产物：
+详细边界见 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)，剩余工作和验收条件见 [`docs/DEVELOPMENT_PLAN.md`](docs/DEVELOPMENT_PLAN.md)。Web ChatGPT 资产包工作流位于 [`skills/create-gen-video-asset-pack`](skills/create-gen-video-asset-pack/)。
 
-```text
-output/football/final.mp4
-output/football/subtitles.srt
-output/football/qa-frames/*
-output/story/final.mp4
-output/story/subtitles.srt
-output/story/qa-frames/*
-```
+## 商业与许可边界
 
-`subtitles.srt` 是外挂文件，不会烧录进视频；`final.mp4` 只混合旁白，不添加背景音乐。
-
-## 素材包
-
-```text
-asset-pack/
-├── manifest.json
-├── narration.txt
-├── subtitles.srt
-├── audio/narration.wav
-├── assets/backgrounds/
-├── assets/characters/
-├── assets/props/
-└── shots/<shot-id>/shot.json
-```
-
-生成资产前必须为每个镜头声明：相机位置、人物朝向、动作轴、目标/接触点、支撑与地面、深度顺序、遮挡物和起止状态。完整生产规范在 [`chatgpt-asset-director`](chatgpt-asset-director/INSTRUCTIONS.md)。
-
-## 人物动画边界
-
-- `Rigid Actor`：完整人物整体位移、缩放、轻微旋转和一次性入场。
-- `Pose Cut`：两张或更多完整人物姿态；仅在硬切、纸片/道具全遮挡、闪帧、撕纸或切镜下切换，永不交叉淡化。
-- `Mesh Puppet`：连续完整纹理 + 隐藏连续网格 + `Skeleton2D` 骨骼。编辑器可自动生成首版绑定、人工校正并直接调用 Godot 生成透明预览；最终导出会先逐帧生成透明人物序列，缺失 Worker 结果时明确失败，不会退化成静态贴图。
-
-禁止拆肢、幻肢式关节、人物 flip/fold、默认循环 bob、整张海报同平面运镜。
-
-## 架构
-
-```text
-apps/desktop              Electron 主进程、受限 preload、React 编辑器
-packages/schema           schema v2 与迁移
-packages/asset-pack       安全导入、媒体检查、项目读写
-packages/motion-core      8 个动作配方、事件编译、独立图层视差
-packages/remotion-engine  共享预览/导出的画面求值器
-packages/render-service   Remotion 渲染、旁白混合、外挂 SRT、QA
-packages/worker-client    Godot、自动绑定与 RIFE 本地 worker 客户端
-packages/template-market  模板目录校验与本地安装
-motion-worker             Godot Mesh Puppet Worker 与动作模板
-templates                 可安装的动作、镜头与世界规则模板
-chatgpt-asset-director    ChatGPT/Imagegen 素材生产契约
-skills                    可安装的 Codex 技能
-examples                  足球与故事资产包
-```
-
-更详细的信任边界和数据流见 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)。
-
-## 安全与本地性
-
-- Renderer 无 Node 权限，只能通过窄 IPC 调用。
-- 文件选择后使用一次性句柄；Renderer 不能提交任意路径给导入器。
-- 导入先进入 staging，通过全部阻断项后原子提交。
-- 本地素材通过 `gen-video-asset://` 受限协议读取，并执行根目录包含检查。
-- 删除仅允许应用项目根目录下的非只读项目。
-
-## License
-
-MIT
+仓库代码采用 MIT License。WanGP、F5-TTS、Remotion 及各模型权重由用户独立安装，并继续受各自许可证约束。完成本地技术接入不等于获得白标、SaaS、付费 API、模型再分发或 OEM 权利；商业分发前仍需逐项完成许可证和法律审查。

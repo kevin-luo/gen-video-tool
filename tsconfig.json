@@ -19,13 +19,13 @@
     "jsx": "react-jsx",
     "types": ["node", "vite/client"],
     "paths": {
-      "@gen-video-tool/schema": ["./packages/schema/src/index.ts"],
       "@gen-video-tool/asset-pack": ["./packages/asset-pack/src/index.ts"],
+      "@gen-video-tool/frame-interpolation": ["./packages/frame-interpolation/src/index.ts"],
       "@gen-video-tool/motion-core": ["./packages/motion-core/src/index.ts"],
       "@gen-video-tool/remotion-engine": ["./packages/remotion-engine/src/index.ts"],
       "@gen-video-tool/render-service": ["./packages/render-service/src/index.ts"],
-      "@gen-video-tool/worker-client": ["./packages/worker-client/src/index.ts"],
-      "@gen-video-tool/template-market": ["./packages/template-market/src/index.ts"]
+      "@gen-video-tool/local-tts": ["./packages/local-tts/src/index.ts"],
+      "@gen-video-tool/video-generation": ["./packages/video-generation/src/index.ts"]
     }
   },
   "include": [

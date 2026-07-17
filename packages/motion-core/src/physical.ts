@@ -13,9 +13,9 @@ export type PropTransform = {x: number; y: number; scaleX: number; scaleY: numbe
 const clamp01 = (value: number) => Math.min(1, Math.max(0, value));
 
 /**
- * A football stays planted until contact. After contact it has maximum initial
- * screen velocity, then appears to slow and shrink as it travels toward the
- * distant goal. curveX is a single controlled lateral bend, not idle wobble.
+ * A causal prop stays planted until contact. After contact it has maximum
+ * initial screen velocity, then appears to slow and shrink as it travels into
+ * depth. curveX is a controlled lateral bend, not decorative idle motion.
  */
 export const sampleBallisticProp = (
   motion: BallisticPropInput,

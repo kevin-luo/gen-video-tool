@@ -1,12 +1,17 @@
 import {spawn} from 'node:child_process';
+import {randomUUID} from 'node:crypto';
 import fsSync from 'node:fs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import {bundle} from '@remotion/bundler';
 import {getCompositions, renderMedia, type CancelSignal} from '@remotion/renderer';
-import {loadProjectDirectory, projectDurationSeconds} from '@gen-video-tool/asset-pack';
-import {rigSchema, type ProjectDocument} from '@gen-video-tool/schema';
-import {detectLocalTool, runMotionWorker} from '@gen-video-tool/worker-client';
+import {probeVideo} from '@gen-video-tool/video-generation';
+import {
+  buildProjectQaFrameSamples,
+  loadProductionRenderContext,
+} from './production-render';
+
+export * from './production-render';
 
 export type RenderPhase = 'preparing' | 'rendering' | 'checking' | 'done';
 
@@ -52,74 +57,6 @@ const findBrowserExecutable = (): string | null => {
   return candidates.find((candidate) => fsSync.existsSync(candidate)) ?? null;
 };
 
-const findGodotExecutable = (workspaceRoot: string): string | null => {
-  const developmentRoot = path.resolve(workspaceRoot, '..', '.tools');
-  const candidates = process.platform === 'win32' ? [
-    path.join(workspaceRoot, 'tools', 'godot', 'godot.exe'),
-    path.join(developmentRoot, 'godot-4.7.1', 'Godot_v4.7.1-stable_win64_console.exe'),
-    path.join(developmentRoot, 'godot-4.7.1', 'Godot_v4.7.1-stable_win64.exe'),
-  ] : [path.join(workspaceRoot, 'tools', 'godot', 'godot')];
-  const detection = detectLocalTool('godot', {bundledCandidates: candidates});
-  return detection.executable ?? null;
-};
-
-const prepareMeshActors = async (
-  project: ProjectDocument,
-  projectRoot: string,
-  runtimeRoot: string,
-  workspaceRoot: string,
-): Promise<ProjectDocument> => {
-  const runtimeProject = structuredClone(project);
-  const meshActors = runtimeProject.shots.flatMap((shot) =>
-    shot.actors.filter((actor) => actor.mode === 'mesh').map((actor) => ({shot, actor})),
-  );
-  if (!meshActors.length) return runtimeProject;
-  const godot = findGodotExecutable(workspaceRoot);
-  if (!godot) throw new Error('MESH_WORKER_UNAVAILABLE:set GODOT_PATH or install the bundled Godot runtime');
-  for (const {shot, actor} of meshActors) {
-    const texturePath = path.join(projectRoot, ...actor.sourcePath.split('/'));
-    const rigPath = path.join(projectRoot, ...actor.rigPath.split('/'));
-    const rig = rigSchema.parse(JSON.parse(await fs.readFile(rigPath, 'utf8')));
-    const relativeDirectory = `generated/motion/${shot.id}/${actor.id}`;
-    const outputDirectory = path.join(runtimeRoot, ...relativeDirectory.split('/'));
-    await fs.mkdir(outputDirectory, {recursive: true});
-    const result = await runMotionWorker(godot, {
-      protocolVersion: 1,
-      requestId: `${project.manifest.projectId}-${shot.id}-${actor.id}-${Date.now()}`,
-      projectId: project.manifest.projectId,
-      actorId: actor.id,
-      texturePath,
-      rigPath,
-      action: {
-        template: actor.actionTemplate ?? 'idle-breathe',
-        durationInFrames: shot.durationFrames,
-        startFrame: actor.actionStartFrame,
-        ...(actor.actionDurationFrames ? {activeDurationInFrames: actor.actionDurationFrames} : {}),
-        fps: project.manifest.fps,
-        amplitude: actor.actionStrength,
-      },
-      output: {
-        directory: outputDirectory,
-        format: 'png-sequence',
-        width: rig.canvas.width,
-        height: rig.canvas.height,
-        cleanupFrames: false,
-      },
-    }, {projectPath: path.join(workspaceRoot, 'motion-worker', 'godot'), timeoutMs: 300_000});
-    if (result.status !== 'complete' || !result.hasAlpha || result.frameCount !== shot.durationFrames) {
-      throw new Error(`MESH_WORKER_FAILED:${shot.id}:${actor.id}:${JSON.stringify(result.error ?? result)}`);
-    }
-    actor.renderedAsset = {
-      format: 'png-sequence',
-      directory: relativeDirectory,
-      frameCount: result.frameCount,
-      fps: result.fps ?? project.manifest.fps,
-      filePrefix: 'frame_',
-    };
-  }
-  return runtimeProject;
-};
-
 const run = async (executable: string, args: string[]): Promise<void> =>
   new Promise((resolve, reject) => {
     const child = spawn(executable, args, {shell: false, windowsHide: true, stdio: ['ignore', 'ignore', 'pipe']});
@@ -129,28 +66,80 @@ const run = async (executable: string, args: string[]): Promise<void> =>
     child.once('exit', (code) => code === 0 ? resolve() : reject(new Error(`PROCESS_FAILED:${code ?? 'unknown'}:${stderr.slice(-1200)}`)));
   });
 
+const fileExists = async (candidate: string): Promise<boolean> => {
+  try {
+    return (await fs.stat(candidate)).isFile();
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;
+    throw error;
+  }
+};
+
+const copyFileAtomic = async (source: string, target: string): Promise<void> => {
+  await fs.mkdir(path.dirname(target), {recursive: true});
+  const staged = path.join(path.dirname(target), `.${path.basename(target)}.${randomUUID()}.tmp`);
+  const backup = path.join(path.dirname(target), `.${path.basename(target)}.${randomUUID()}.bak`);
+  const hadTarget = await fileExists(target);
+  await fs.copyFile(source, staged);
+  try {
+    if (hadTarget) await fs.rename(target, backup);
+    await fs.rename(staged, target);
+    if (hadTarget) await fs.rm(backup, {force: true});
+  } catch (error) {
+    if (!await fileExists(target) && await fileExists(backup)) await fs.rename(backup, target);
+    throw error;
+  } finally {
+    await fs.rm(staged, {force: true});
+    await fs.rm(backup, {force: true});
+  }
+};
+
+const isInside = (root: string, candidate: string): boolean => {
+  const relative = path.relative(root, candidate);
+  return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
+};
+
 export const renderProjectDirectory = async (options: RenderProjectOptions): Promise<RenderProjectResult> => {
-  const project = await loadProjectDirectory(options.projectRoot);
-  const durationSeconds = projectDurationSeconds(project);
-  const runtimeId = `${project.manifest.projectId}-${process.pid}-${Date.now()}`;
+  const projectRoot = path.resolve(options.projectRoot);
+  const productionContext = await loadProductionRenderContext(projectRoot);
+  const durationSeconds = productionContext.plan.delivery.timeline.durationFrames
+    / productionContext.plan.delivery.timeline.fps;
+  const runtimeId = `${productionContext.plan.projectId}-${process.pid}-${Date.now()}`;
   const runtimeRoot = path.join(options.workspaceRoot, 'public', 'runtime', runtimeId);
   const outputRoot = path.resolve(options.outputRoot);
+  if (
+    outputRoot === path.parse(outputRoot).root
+    || isInside(projectRoot, outputRoot)
+    || isInside(outputRoot, projectRoot)
+    || outputRoot === path.resolve(options.workspaceRoot)
+  ) {
+    throw new Error('RENDER_OUTPUT_ROOT_UNSAFE');
+  }
   const picturePath = path.join(outputRoot, 'picture.mp4');
-  const videoPath = path.join(outputRoot, 'final.mp4');
+  const videoPath = path.join(outputRoot, path.basename(productionContext.plan.delivery.video.path));
   const qaRoot = path.join(outputRoot, 'qa-frames');
-  const subtitlesPath = project.manifest.subtitlesPath ? path.join(outputRoot, 'subtitles.srt') : null;
+  const narrationSourcePath = productionContext.narrationPath;
+  const subtitleSourcePath = productionContext.subtitlePath;
+  const subtitlesPath = path.join(outputRoot, path.basename(productionContext.plan.delivery.subtitles.path));
   options.onProgress?.('preparing', 0.04);
-  await fs.rm(outputRoot, {recursive: true, force: true});
   await fs.mkdir(outputRoot, {recursive: true});
+  await Promise.all([
+    fs.rm(picturePath, {force: true}),
+    fs.rm(videoPath, {force: true}),
+    fs.rm(subtitlesPath, {force: true}),
+    fs.rm(qaRoot, {recursive: true, force: true}),
+  ]);
   await fs.mkdir(path.dirname(runtimeRoot), {recursive: true});
-  await fs.cp(options.projectRoot, runtimeRoot, {recursive: true});
+  await fs.cp(projectRoot, runtimeRoot, {recursive: true});
   try {
-    const runtimeProject = await prepareMeshActors(project, options.projectRoot, runtimeRoot, options.workspaceRoot);
     const serveUrl = await bundle({
       entryPoint: path.join(options.workspaceRoot, 'packages', 'remotion-engine', 'src', 'entry.ts'),
       publicDir: path.join(options.workspaceRoot, 'public'),
     });
-    const inputProps = {project: runtimeProject, assetBase: `runtime/${runtimeId}`};
+    const inputProps = {
+      assetBase: `runtime/${runtimeId}`,
+      productionRenderData: productionContext.renderData,
+    };
     const browserExecutable = findBrowserExecutable();
     const compositions = await getCompositions(serveUrl, {inputProps, browserExecutable});
     const composition = compositions.find((item) => item.id === 'GenVideoProject');
@@ -166,6 +155,7 @@ export const renderProjectDirectory = async (options: RenderProjectOptions): Pro
       muted: true,
       enforceAudioTrack: false,
       pixelFormat: 'yuv420p',
+      colorSpace: 'bt709',
       crf: 19,
       concurrency: 2,
       ...(options.cancelSignal ? {cancelSignal: options.cancelSignal} : {}),
@@ -173,30 +163,62 @@ export const renderProjectDirectory = async (options: RenderProjectOptions): Pro
     });
     options.onProgress?.('checking', 0.86);
     const ffmpeg = findRemotionTool(options.workspaceRoot, 'ffmpeg');
-    if (project.manifest.audio) {
-      const narration = path.join(options.projectRoot, ...project.manifest.audio.narrationPath.split('/'));
-      await run(ffmpeg, [
-        '-y', '-i', picturePath, '-i', narration,
-        '-map', '0:v:0', '-map', '1:a:0',
-        '-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k',
-        '-t', durationSeconds.toFixed(3), '-movflags', '+faststart', videoPath,
-      ]);
-      await fs.rm(picturePath, {force: true});
-    } else {
-      await fs.rename(picturePath, videoPath);
-    }
-    if (project.manifest.subtitlesPath && subtitlesPath) {
-      await fs.copyFile(path.join(options.projectRoot, ...project.manifest.subtitlesPath.split('/')), subtitlesPath);
+    const narration = path.join(projectRoot, ...narrationSourcePath.split('/'));
+    await run(ffmpeg, [
+      '-y', '-i', picturePath, '-i', narration,
+      '-map', '0:v:0', '-map', '1:a:0',
+      '-c:v', 'copy', '-c:a', productionContext.plan.delivery.audio.muxCodec, '-b:a', '192k',
+      '-ar', String(productionContext.plan.delivery.audio.muxSampleRate),
+      '-t', durationSeconds.toFixed(3), '-movflags', '+faststart', videoPath,
+    ]);
+    await fs.rm(picturePath, {force: true});
+    await fs.copyFile(path.join(projectRoot, ...subtitleSourcePath.split('/')), subtitlesPath);
+    const finalProbe = await probeVideo(videoPath, {
+      ffmpegPath: ffmpeg,
+      ffprobePath: findRemotionTool(options.workspaceRoot, 'ffprobe'),
+    });
+    const delivery = productionContext.plan.delivery;
+    const probeIssues = [
+      finalProbe.width === delivery.raster.width && finalProbe.height === delivery.raster.height
+        ? null
+        : `raster:${finalProbe.width}x${finalProbe.height}`,
+      finalProbe.fps !== null && Math.abs(finalProbe.fps - delivery.timeline.fps) <= 0.01
+        ? null
+        : `fps:${String(finalProbe.fps)}`,
+      finalProbe.frameCount !== null && Math.abs(finalProbe.frameCount - delivery.timeline.durationFrames) <= 1
+        ? null
+        : `frames:${String(finalProbe.frameCount)}`,
+      finalProbe.codecName === delivery.video.codec ? null : `codec:${String(finalProbe.codecName)}`,
+      finalProbe.pixelFormat === delivery.video.pixelFormat ? null : `pixel-format:${String(finalProbe.pixelFormat)}`,
+      finalProbe.hasAudio ? null : 'audio:missing',
+    ].filter((issue): issue is string => issue !== null);
+    if (probeIssues.length > 0) {
+      throw new Error(`FINAL_DELIVERY_QA_FAILED:${probeIssues.join(',')}`);
     }
     await fs.mkdir(qaRoot, {recursive: true});
-    const sampleTimes = [0.1, durationSeconds / 2, Math.max(0.1, durationSeconds - 0.15)];
-    const qaFramePaths = await Promise.all(sampleTimes.map(async (seconds, index) => {
-      const target = path.join(qaRoot, `frame-${index + 1}.jpg`);
+    const qaSamples = buildProjectQaFrameSamples(productionContext.plan);
+    const qaFramePaths: string[] = [];
+    for (const [index, sample] of qaSamples.entries()) {
+      const seconds = Math.min(
+        Math.max(0, durationSeconds - 1 / productionContext.plan.delivery.timeline.fps),
+        sample.frame / productionContext.plan.delivery.timeline.fps,
+      );
+      const target = path.join(
+        qaRoot,
+        `frame-${String(index + 1).padStart(2, '0')}-f${String(sample.frame).padStart(6, '0')}.jpg`,
+      );
       await run(ffmpeg, ['-y', '-ss', seconds.toFixed(3), '-i', videoPath, '-frames:v', '1', '-q:v', '2', target]);
       const stat = await fs.stat(target);
       if (stat.size < 10_000) throw new Error(`QA_FRAME_TOO_SMALL:${target}`);
-      return target;
-    }));
+      qaFramePaths.push(target);
+      options.onProgress?.('checking', 0.86 + ((index + 1) / qaSamples.length) * 0.13);
+    }
+    // Commit the verified export to the canonical project-relative delivery
+    // path only after every QA sample was extracted successfully.
+    await copyFileAtomic(
+      videoPath,
+      path.join(projectRoot, ...productionContext.plan.delivery.video.path.split('/')),
+    );
     options.onProgress?.('done', 1);
     return {videoPath, subtitlesPath, qaFramePaths, durationSeconds};
   } finally {

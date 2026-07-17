@@ -1,5 +1,6 @@
 import type {AssetPackInspection} from '@gen-video-tool/asset-pack';
-import type {MeshActionTemplate, ProjectDocument, Rig} from '@gen-video-tool/schema';
+import type {ProductionRenderData} from '@gen-video-tool/remotion-engine';
+import type {ProductionPlan, ProductionState} from '@gen-video-tool/video-generation';
 
 export interface AssetPackSelection {
   handle: string;
@@ -11,6 +12,7 @@ export interface AssetPackSelection {
 export interface RecentProject {
   id: string;
   name: string;
+  locale: string;
   updatedAt: string;
   durationSeconds: number;
   shotCount: number;
@@ -19,13 +21,13 @@ export interface RecentProject {
   readOnly?: boolean;
 }
 
-export interface CreateProjectRequest {
-  name: string;
-  aspectRatio: '9:16' | '16:9' | '1:1';
-}
-
 export interface ProjectPayload {
-  project: ProjectDocument;
+  plan: ProductionPlan;
+  state: ProductionState;
+  /** Present only when every generated shot has an accepted, QA-passed candidate. */
+  renderData?: ProductionRenderData;
+  /** Explicit reason the full v3 preview is gated; never a silent static fallback. */
+  renderGate?: {code: string; message: string};
   assetBase: string;
   readOnly: boolean;
 }
@@ -48,42 +50,116 @@ export interface ExportProgress {
   progress: number;
 }
 
-export interface MeshRigPayload {
-  projectId: string;
+export type ProductionCandidateStatus =
+  | 'planned'
+  | 'queued'
+  | 'preparing'
+  | 'running'
+  | 'downloading'
+  | 'complete'
+  | 'failed'
+  | 'cancelled'
+  | 'interrupted';
+
+export type ProductionHumanDecision = 'pending' | 'selected' | 'rejected';
+
+export interface ProductionCandidateSnapshot {
+  candidateId: string;
   shotId: string;
-  actorId: string;
-  rig: Rig;
-  textureUrl: string;
+  seed: number;
+  status: ProductionCandidateStatus;
+  progress: number;
+  providerJobId?: string;
+  videoUrl?: string;
+  relativePath?: string;
+  sha256?: string;
+  technicalQa?: {
+    status: 'passed' | 'failed';
+    checkedAt: string;
+    issues: string[];
+  };
+  humanDecision: ProductionHumanDecision;
+  error?: {code: string; message: string};
+}
+
+export interface ProductionShotSnapshot {
+  shotId: string;
+  kind: 'layered-collage' | 'generated-performance';
+  status:
+    | 'not-required'
+    | 'ready-to-generate'
+    | 'generating'
+    | 'awaiting-selection'
+    | 'selected'
+    | 'failed'
+    | 'interrupted';
+  selectedCandidateId?: string;
+  candidates: ProductionCandidateSnapshot[];
+}
+
+export interface ProductionProviderSnapshot {
+  id: 'wangp';
+  localOnly: true;
+  available: boolean;
+  checking: boolean;
+  transport: 'stdio' | 'streamable-http';
+  endpoint?: string;
+  version?: string;
+  reason?: string;
+  root?: string;
+  pythonExecutable?: string;
+  presets: Array<{
+    id: string;
+    label: string;
+    qualityTier: 'preview' | 'quality';
+    width: number;
+    height: number;
+    fps: number;
+    frameCount: number;
+  }>;
+}
+
+export interface ProductionNarrationSnapshot {
+  status: 'queued' | 'generating' | 'complete' | 'failed' | 'interrupted';
+  engine: 'f5-tts-local';
+  segmentCount: number;
+  mergedAudioPath?: string;
+  audioUrl?: string;
+  durationSeconds?: number;
+  speechDurationSeconds?: number;
+  tailPaddingSeconds?: number;
+  sha256?: string;
+  segments: Array<{
+    segmentId: string;
+    startSeconds: number;
+    endSeconds: number;
+    durationSeconds: number;
+  }>;
+  error?: string;
+}
+
+export interface ProductionSnapshot {
+  projectId: string;
+  hasPlan: boolean;
   readOnly: boolean;
+  networkPolicy?: 'offline-only';
+  provider?: ProductionProviderSnapshot;
+  narration?: ProductionNarrationSnapshot;
+  shots: ProductionShotSnapshot[];
+  updatedAt?: string;
+  error?: {code: string; message: string};
 }
 
-export interface MeshPreviewRequest {
+export interface GenerateProductionShotRequest {
   projectId: string;
   shotId: string;
-  actorId: string;
-  action: MeshActionTemplate;
-  amplitude: number;
-  rig?: Rig;
 }
 
-export interface MeshPreviewResult {
-  requestId: string;
-  videoUrl: string;
-  frameCount: number;
-  fps: number;
-  durationSeconds: number;
-  warnings: string[];
-}
-
-export interface TemplateMarketEntry {
-  id: string;
-  name: string;
-  version: string;
-  category: 'sports' | 'story' | 'explainer' | 'commerce';
-  summary: string;
-  actions: string[];
-  recipes: string[];
-  installed: boolean;
+export interface ProductionProgress {
+  projectId: string;
+  shotId: string;
+  candidateId?: string;
+  snapshot: ProductionSnapshot;
 }
 
 export interface DesktopApi {
@@ -93,19 +169,20 @@ export interface DesktopApi {
   importAssetPack: (handle: string) => Promise<ProjectImportResponse>;
   listRecentProjects: () => Promise<RecentProject[]>;
   openProject: (projectId: string) => Promise<ProjectPayload>;
-  createProject: (request: CreateProjectRequest) => Promise<RecentProject>;
   deleteProject: (projectId: string) => Promise<void>;
-  saveProject: (projectId: string, project: ProjectDocument) => Promise<ProjectPayload>;
   exportProject: (projectId: string) => Promise<ExportProjectResult>;
   cancelExport: (projectId: string) => Promise<void>;
   onExportProgress: (listener: (progress: ExportProgress) => void) => () => void;
   revealOutput: (projectId: string) => Promise<void>;
-  loadMeshRig: (projectId: string, shotId: string, actorId: string) => Promise<MeshRigPayload>;
-  renderMeshPreview: (request: MeshPreviewRequest) => Promise<MeshPreviewResult>;
-  autoRigMesh: (projectId: string, shotId: string, actorId: string) => Promise<MeshRigPayload>;
-  saveMeshRig: (projectId: string, shotId: string, actorId: string, rig: Rig) => Promise<MeshRigPayload>;
-  listTemplates: () => Promise<TemplateMarketEntry[]>;
-  installTemplate: (templateId: string) => Promise<TemplateMarketEntry[]>;
+  getProductionSnapshot: (projectId: string) => Promise<ProductionSnapshot>;
+  detectProductionProvider: (projectId: string) => Promise<ProductionSnapshot>;
+  synthesizeProductionNarration: (projectId: string) => Promise<ProductionSnapshot>;
+  cancelProductionNarration: (projectId: string) => Promise<ProductionSnapshot>;
+  generateProductionShot: (request: GenerateProductionShotRequest) => Promise<ProductionSnapshot>;
+  cancelProductionShot: (projectId: string, shotId: string) => Promise<ProductionSnapshot>;
+  selectProductionCandidate: (projectId: string, shotId: string, candidateId: string) => Promise<ProductionSnapshot>;
+  rejectProductionCandidate: (projectId: string, shotId: string, candidateId: string) => Promise<ProductionSnapshot>;
+  onProductionProgress: (listener: (progress: ProductionProgress) => void) => () => void;
 }
 
 export const IPC_CHANNELS = {
@@ -114,17 +191,18 @@ export const IPC_CHANNELS = {
   importAssetPack: 'asset-pack:import',
   listRecentProjects: 'projects:list-recent',
   openProject: 'projects:open',
-  createProject: 'projects:create',
   deleteProject: 'projects:delete',
-  saveProject: 'projects:save',
   exportProject: 'projects:export',
   exportProgress: 'projects:export-progress',
   cancelExport: 'projects:cancel-export',
   revealOutput: 'projects:reveal-output',
-  loadMeshRig: 'motion:load-rig',
-  renderMeshPreview: 'motion:render-preview',
-  autoRigMesh: 'motion:auto-rig',
-  saveMeshRig: 'motion:save-rig',
-  listTemplates: 'templates:list',
-  installTemplate: 'templates:install',
+  getProductionSnapshot: 'production:snapshot',
+  detectProductionProvider: 'production:detect-provider',
+  synthesizeProductionNarration: 'production:synthesize-narration',
+  cancelProductionNarration: 'production:cancel-narration',
+  generateProductionShot: 'production:generate-shot',
+  cancelProductionShot: 'production:cancel-shot',
+  selectProductionCandidate: 'production:select-candidate',
+  rejectProductionCandidate: 'production:reject-candidate',
+  productionProgress: 'production:progress',
 } as const;
