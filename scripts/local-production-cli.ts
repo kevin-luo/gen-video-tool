@@ -15,7 +15,8 @@ const usage = `Usage:
   npm run local:production -- select <projectRoot> <shotId> <candidateId> [--notes=<text>]
   npm run local:production -- reject <projectRoot> <shotId> <candidateId> [--notes=<text>]
 
-All generation is local-only. generate serializes the two immutable seeds and never selects a candidate.
+All generation is local-only. Each generate command runs exactly one immutable seed and never selects a candidate.
+Run generate again explicitly when you want the next planned candidate.
 select and reject are explicit human review actions.`;
 
 export const runLocalProductionCli = async (argv: readonly string[]): Promise<number> => {

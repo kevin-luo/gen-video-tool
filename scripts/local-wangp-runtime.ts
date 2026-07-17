@@ -143,9 +143,8 @@ export const createLocalWanGPRuntime = (rawOutputDirectory: string): LocalWanGPR
       requestTimeoutMs: 10 * 60_000,
       extraArguments: [
         '--output-dir', path.resolve(rawOutputDirectory),
-        '--i2v-1-3B',
-        '--profile', process.env.WANGP_PROFILE?.trim() || '5',
-        '--attention', process.env.WANGP_ATTENTION?.trim() || 'sdpa',
+        '--profile', process.env.WANGP_PROFILE?.trim() || '4',
+        '--attention', process.env.WANGP_ATTENTION?.trim() || 'auto',
       ],
       environment: buildLocalOnlyWanGPEnvironment(cacheRoot),
     }),

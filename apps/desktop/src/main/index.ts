@@ -1,9 +1,12 @@
 import {createHash, randomUUID} from 'node:crypto';
+import {spawn} from 'node:child_process';
 import fsSync from 'node:fs';
 import fs from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {app, BrowserWindow, dialog, ipcMain, protocol, shell} from 'electron';
+import sharp from 'sharp';
 import {
   importAssetPack,
   inspectAssetPack,
@@ -30,15 +33,18 @@ import {
   completeProductionNarration,
   completeProductionCandidate,
   createProductionState,
+  discoverLocalWanGPAcceleratorProfiles,
   failProductionNarration,
   interruptProductionNarration,
   loadProductionPlan,
   loadProductionState,
   loadProductionStateForRestart,
   inspectProductionRunLock,
+  LocalResourceSampler,
   normalizeVideo,
   parseProductionState,
   reviewProductionCandidate,
+  resolveWanGPBenchmarkTargets,
   raceWithAbortSignal,
   selectProductionCandidate,
   settleCooperativeCancellation,
@@ -64,6 +70,10 @@ import type {
   ProductionShotSnapshot,
   ProductionSnapshot,
   RecentProject,
+  StartWanGPBenchmarkRequest,
+  WanGPBenchmarkEntry,
+  WanGPBenchmarkSnapshot,
+  WanGPBenchmarkTargetId,
 } from '../shared/desktop-api.js';
 import {IPC_CHANNELS} from '../shared/desktop-api.js';
 import {createDesktopDiagnostics, diagnosticError} from './desktop-diagnostics.js';
@@ -163,16 +173,35 @@ type ActiveNarrationRun = {
   lock: ProductionRunLockHandle;
 };
 
+type ActiveWanGPBenchmarkRun = {
+  targetId: WanGPBenchmarkTargetId;
+  controller: AbortController;
+  lock: ProductionRunLockHandle;
+  providerJobId?: string;
+};
+
+type PersistedWanGPBenchmarkReport = {
+  schemaVersion: 1;
+  projectId: string;
+  shotId: string;
+  firstFramePath: string;
+  entries: WanGPBenchmarkEntry[];
+  contactSheetRelativePath?: string;
+  updatedAt: string;
+};
+
 type RuntimeCandidateProgress = {
   providerJobId?: string;
   status: VideoGenerationJob['status'];
   progress: number;
+  metrics?: VideoGenerationJob['metrics'];
   error?: {code: string; message: string};
 };
 
 const productionProviders = new Map<string, ManagedProductionProvider>();
 const activeProductionRuns = new Map<string, ActiveProductionRun>();
 const activeNarrationRuns = new Map<string, ActiveNarrationRun>();
+const activeWanGPBenchmarkRuns = new Map<string, ActiveWanGPBenchmarkRun>();
 const productionRuntimeProgress = new Map<string, RuntimeCandidateProgress>();
 const productionRecoveryComplete = new Set<string>();
 const productionVolatileState = new Map<string, ProductionState>();
@@ -421,9 +450,8 @@ const createProductionProvider = async (context: ProductionContext): Promise<Man
       requestTimeoutMs: 10 * 60_000,
       extraArguments: [
         '--output-dir', rawOutputDirectory,
-        '--i2v-1-3B',
-        '--profile', process.env.WANGP_PROFILE?.trim() || '5',
-        '--attention', process.env.WANGP_ATTENTION?.trim() || 'sdpa',
+        '--profile', process.env.WANGP_PROFILE?.trim() || '4',
+        '--attention', process.env.WANGP_ATTENTION?.trim() || 'auto',
       ],
       environment: buildLocalOnlyWanGPEnvironment(cacheRoot),
     });
@@ -432,15 +460,21 @@ const createProductionProvider = async (context: ProductionContext): Promise<Man
   const provider = new WanGPProvider({
     transport,
     outputDirectory: path.join(context.registration.root, 'generated', 'provider-jobs'),
-    preferredModelTypes: {preview: 'fun_inp_1.3B', quality: 'fun_inp_1.3B'},
+    ...(root === undefined
+      ? {}
+      : {profileSource: (directories) => discoverLocalWanGPAcceleratorProfiles(root!, directories)}),
     callbacks: {
       log: (level, message, details) => console[level === 'debug' ? 'debug' : level](`[wangp] ${message}`, details ?? ''),
     },
   });
   const detection = await provider.detect();
   let presets: VideoGenerationPreset[] = [];
+  let catalog: Awaited<ReturnType<WanGPProvider['getCapabilityCatalog']>> | undefined;
   if (detection.available) {
-    try { presets = await provider.listPresets(); }
+    try {
+      catalog = await provider.getCapabilityCatalog();
+      presets = await provider.listPresets();
+    }
     catch (error) {
       await transport.close().catch(() => undefined);
       throw error;
@@ -459,6 +493,7 @@ const createProductionProvider = async (context: ProductionContext): Promise<Man
       : detection.reason === undefined ? {} : {reason: detection.reason}),
     ...(root === undefined ? {} : {root}),
     ...(pythonExecutable === undefined ? {} : {pythonExecutable}),
+    ...(catalog === undefined ? {} : {catalog}),
     presets: presets.map((preset) => ({
       id: preset.id,
       label: preset.label,
@@ -473,7 +508,7 @@ const createProductionProvider = async (context: ProductionContext): Promise<Man
 };
 
 const detectProductionProvider = async (context: ProductionContext): Promise<ManagedProductionProvider> => {
-  if (activeProductionRuns.size > 0) throw new Error('LOCAL_GENERATION_ALREADY_RUNNING');
+  if (activeProductionRuns.size > 0 || activeWanGPBenchmarkRuns.size > 0) throw new Error('LOCAL_GENERATION_ALREADY_RUNNING');
   const existing = productionProviders.get(context.projectId);
   if (existing) await existing.transport.close().catch(() => undefined);
   productionProviders.delete(context.projectId);
@@ -538,6 +573,7 @@ const createProductionSnapshot = async (
         status,
         progress: runtime?.progress ?? (status === 'complete' ? 1 : 0),
         ...(runtime?.providerJobId === undefined ? {} : {providerJobId: runtime.providerJobId}),
+        ...(runtime?.metrics === undefined ? {} : {metrics: {...runtime.metrics}}),
         ...(videoUrl === undefined ? {} : {videoUrl}),
         ...(candidate.relativePath === undefined ? {} : {relativePath: candidate.relativePath}),
         ...(candidate.sha256 === undefined ? {} : {sha256: candidate.sha256}),
@@ -622,6 +658,326 @@ const emitProductionProgress = async (
   };
   for (const window of BrowserWindow.getAllWindows()) {
     window.webContents.send(IPC_CHANNELS.productionProgress, progress);
+  }
+};
+
+const benchmarkDirectory = (context: ProductionContext): string =>
+  path.join(context.registration.root, 'generated', 'benchmarks');
+
+const benchmarkReportPath = (context: ProductionContext): string =>
+  path.join(benchmarkDirectory(context), 'timing-report.json');
+
+const readWanGPBenchmarkReport = async (
+  context: ProductionContext,
+): Promise<PersistedWanGPBenchmarkReport | null> => {
+  try {
+    const parsed = JSON.parse(await fs.readFile(benchmarkReportPath(context), 'utf8')) as Partial<PersistedWanGPBenchmarkReport>;
+    if (parsed.schemaVersion !== 1 || parsed.projectId !== context.projectId || !Array.isArray(parsed.entries)) return null;
+    return parsed as PersistedWanGPBenchmarkReport;
+  } catch (error) {
+    if (isMissingFileError(error)) return null;
+    throw error;
+  }
+};
+
+const writeWanGPBenchmarkReport = async (
+  context: ProductionContext,
+  report: PersistedWanGPBenchmarkReport,
+): Promise<void> => {
+  await fs.mkdir(benchmarkDirectory(context), {recursive: true});
+  const cleanEntries = report.entries.map(({outputUrl: _outputUrl, ...entry}) => entry);
+  await fs.writeFile(
+    benchmarkReportPath(context),
+    `${JSON.stringify({...report, entries: cleanEntries}, null, 2)}\n`,
+    'utf8',
+  );
+};
+
+const buildWanGPBenchmarkSnapshot = async (
+  projectIdValue: unknown,
+  knownContext?: ProductionContext,
+): Promise<WanGPBenchmarkSnapshot> => {
+  const context = knownContext ?? await loadProductionContext(projectIdValue);
+  if (!context) throw new Error('PRODUCTION_PLAN_NOT_FOUND');
+  const managed = productionProviders.get(context.projectId);
+  const catalog = managed?.snapshot.catalog;
+  const report = await readWanGPBenchmarkReport(context);
+  const targets = catalog === undefined ? [] : resolveWanGPBenchmarkTargets(catalog);
+  const active = activeWanGPBenchmarkRuns.get(context.projectId);
+  const entries = await Promise.all(targets.map(async (target): Promise<WanGPBenchmarkEntry> => {
+    const persisted = report?.entries.find((entry) => entry.targetId === target.targetId);
+    const relativePath = persisted?.relativePath;
+    let outputUrl: string | undefined;
+    if (relativePath !== undefined) {
+      try {
+        if ((await fs.stat(resolveProjectAsset(context.registration.root, relativePath))).isFile()) {
+          outputUrl = assetUrl(context.projectId, relativePath);
+        }
+      } catch {
+        // Keep the report visible while clearly omitting an unavailable output.
+      }
+    }
+    const interrupted = persisted && ['queued', 'running', 'normalizing'].includes(persisted.status) && !active;
+    return {
+      ...target,
+      ...(persisted ?? {status: 'not-run' as const}),
+      ...(interrupted ? {status: 'failed' as const, error: '上次基准测试在完成前中断。'} : {}),
+      ...(outputUrl === undefined ? {} : {outputUrl}),
+    };
+  }));
+  let contactSheetUrl: string | undefined;
+  if (report?.contactSheetRelativePath !== undefined) {
+    try {
+      if ((await fs.stat(resolveProjectAsset(context.registration.root, report.contactSheetRelativePath))).isFile()) {
+        contactSheetUrl = assetUrl(context.projectId, report.contactSheetRelativePath);
+      }
+    } catch {
+      // Missing visual report does not hide timing data.
+    }
+  }
+  return {
+    projectId: context.projectId,
+    ...(report?.shotId === undefined ? {} : {shotId: report.shotId}),
+    ...(report?.firstFramePath === undefined ? {} : {firstFramePath: report.firstFramePath}),
+    ...(active === undefined ? {} : {runningTargetId: active.targetId}),
+    entries,
+    ...(contactSheetUrl === undefined ? {} : {contactSheetUrl}),
+    ...(report?.contactSheetRelativePath === undefined ? {} : {contactSheetRelativePath: report.contactSheetRelativePath}),
+    ...(report === null ? {} : {
+      reportRelativePath: path.relative(context.registration.root, benchmarkReportPath(context)).split(path.sep).join('/'),
+      updatedAt: report.updatedAt,
+    }),
+  };
+};
+
+const updateWanGPBenchmarkEntry = async (
+  context: ProductionContext,
+  shot: GeneratedPerformanceShot,
+  targetId: WanGPBenchmarkTargetId,
+  patch: Omit<Partial<WanGPBenchmarkEntry>, 'error'> & {error?: string | undefined},
+): Promise<PersistedWanGPBenchmarkReport> => {
+  const managed = productionProviders.get(context.projectId);
+  const catalog = managed?.snapshot.catalog;
+  if (!catalog) throw new Error('WANGP_CAPABILITY_CATALOG_NOT_READY');
+  const previous = await readWanGPBenchmarkReport(context);
+  const entries: WanGPBenchmarkEntry[] = resolveWanGPBenchmarkTargets(catalog).map((target) => ({
+    ...target,
+    ...(previous?.entries.find((entry) => entry.targetId === target.targetId) ?? {status: 'not-run' as const}),
+  }));
+  const index = entries.findIndex((entry) => entry.targetId === targetId);
+  if (index < 0) throw new Error('WANGP_BENCHMARK_TARGET_NOT_DISCOVERED');
+  const {error: patchedError, ...patchWithoutError} = patch;
+  const updated: WanGPBenchmarkEntry = {
+    ...entries[index]!,
+    ...patchWithoutError,
+    ...(patchedError === undefined ? {} : {error: patchedError}),
+    targetId,
+  };
+  if ('error' in patch && patchedError === undefined) delete updated.error;
+  entries[index] = updated;
+  const report: PersistedWanGPBenchmarkReport = {
+    schemaVersion: 1,
+    projectId: context.projectId,
+    shotId: shot.shotId,
+    firstFramePath: shot.generation.conditioning.startKeyframePath,
+    entries,
+    ...(previous?.contactSheetRelativePath === undefined ? {} : {contactSheetRelativePath: previous.contactSheetRelativePath}),
+    updatedAt: new Date().toISOString(),
+  };
+  await writeWanGPBenchmarkReport(context, report);
+  return report;
+};
+
+const emitWanGPBenchmarkProgress = async (projectId: string): Promise<void> => {
+  const snapshot = await buildWanGPBenchmarkSnapshot(projectId);
+  for (const window of BrowserWindow.getAllWindows()) {
+    window.webContents.send(IPC_CHANNELS.wanGPBenchmarkProgress, snapshot);
+  }
+};
+
+const runBenchmarkFfmpeg = async (arguments_: string[]): Promise<void> => {
+  const ffmpeg = findRemotionTool('ffmpeg');
+  if (!ffmpeg) throw new Error('FFMPEG_NOT_FOUND');
+  await new Promise<void>((resolve, reject) => {
+    const child = spawn(ffmpeg, arguments_, {shell: false, windowsHide: true, stdio: ['ignore', 'ignore', 'pipe']});
+    let error = '';
+    child.stderr.setEncoding('utf8');
+    child.stderr.on('data', (chunk: string) => { error = `${error}${chunk}`.slice(-4_000); });
+    child.once('error', reject);
+    child.once('exit', (code) => code === 0 ? resolve() : reject(new Error(`BENCHMARK_FRAME_EXTRACTION_FAILED:${code ?? 'unknown'}:${error}`)));
+  });
+};
+
+const refreshWanGPBenchmarkContactSheet = async (
+  context: ProductionContext,
+): Promise<void> => {
+  const report = await readWanGPBenchmarkReport(context);
+  if (!report) return;
+  const completed = report.entries.filter((entry) => entry.status === 'complete' && entry.relativePath !== undefined);
+  if (completed.length === 0) return;
+  const temporaryDirectory = await fs.mkdtemp(path.join(os.tmpdir(), 'gen-video-wangp-benchmark-'));
+  try {
+    const cells = await Promise.all(completed.map(async (entry, index) => {
+      const framePath = path.join(temporaryDirectory, `${index}.png`);
+      await runBenchmarkFfmpeg([
+        '-hide_banner', '-loglevel', 'error', '-y', '-ss', '1.0',
+        '-i', resolveProjectAsset(context.registration.root, entry.relativePath!),
+        '-frames:v', '1', framePath,
+      ]);
+      const label = `${entry.label} · ${entry.metrics?.totalMs ? `${(entry.metrics.totalMs / 1_000).toFixed(1)}s` : '—'}`;
+      const overlay = Buffer.from(`<svg width="360" height="68" xmlns="http://www.w3.org/2000/svg"><rect width="360" height="68" fill="rgba(0,0,0,.78)"/><text x="14" y="27" fill="white" font-family="Arial" font-size="17" font-weight="700">${label.replaceAll('&', '&amp;').replaceAll('<', '&lt;')}</text><text x="14" y="51" fill="#d4d4d8" font-family="Arial" font-size="13">同一首帧 · 1 个候选 · Seed 940001</text></svg>`);
+      return sharp(framePath)
+        .resize(360, 624, {fit: 'cover'})
+        .composite([{input: overlay, left: 0, top: 556}])
+        .jpeg({quality: 90})
+        .toBuffer();
+    }));
+    const columns = 2;
+    const rows = Math.ceil(cells.length / columns);
+    const destination = path.join(benchmarkDirectory(context), 'contact-sheet.jpg');
+    await sharp({create: {width: columns * 360, height: rows * 624, channels: 3, background: '#111315'}})
+      .composite(cells.map((input, index) => ({input, left: index % columns * 360, top: Math.floor(index / columns) * 624})))
+      .jpeg({quality: 90})
+      .toFile(destination);
+    report.contactSheetRelativePath = path.relative(context.registration.root, destination).split(path.sep).join('/');
+    report.updatedAt = new Date().toISOString();
+    await writeWanGPBenchmarkReport(context, report);
+  } finally {
+    await fs.rm(temporaryDirectory, {recursive: true, force: true});
+  }
+};
+
+const executeWanGPBenchmark = async (
+  context: ProductionContext,
+  shot: GeneratedPerformanceShot,
+  targetId: WanGPBenchmarkTargetId,
+  active: ActiveWanGPBenchmarkRun,
+): Promise<void> => {
+  const managed = productionProviders.get(context.projectId);
+  if (!managed?.snapshot.catalog) throw new Error('WANGP_PROVIDER_NOT_READY');
+  const catalog = managed.snapshot.catalog;
+  const target = resolveWanGPBenchmarkTargets(catalog).find((candidate) => candidate.targetId === targetId);
+  if (!target?.modelRuntimeId) throw new Error('WANGP_BENCHMARK_TARGET_NOT_DISCOVERED');
+  const tier = catalog.tiers.find((candidate) => candidate.available) ?? catalog.tiers[0];
+  if (!tier) throw new Error('WANGP_BENCHMARK_BASE_CONFIGURATION_MISSING');
+  const model = catalog.models.find((candidate) => candidate.runtimeModelId === target.modelRuntimeId);
+  const frameCount = model?.supportedFrameCounts.includes(49) === true ? 49 : model?.supportedFrameCounts.find((count) => count === 81) ?? 49;
+  const sampler = new LocalResourceSampler();
+  const startedAt = Date.now();
+  sampler.start();
+  let samplerStopped = false;
+  try {
+    await updateWanGPBenchmarkEntry(context, shot, targetId, {status: 'running', error: undefined});
+    await emitWanGPBenchmarkProgress(context.projectId);
+    let job = await managed.provider.submit({
+      projectId: context.projectId,
+      shotId: `benchmark-${targetId}`,
+      keyframePath: resolveProjectAsset(context.registration.root, shot.generation.conditioning.startKeyframePath),
+      prompt: shot.hybridMotion.actor.prompt,
+      negativePrompt: shot.hybridMotion.actor.negativePrompt,
+      width: tier.width,
+      height: tier.height,
+      fps: tier.fps,
+      frameCount,
+      seed: 940001,
+      motionStrength: shot.generation.preset.motionStrength,
+      presetId: tier.configurationId,
+    }, {
+      configurationId: tier.configurationId,
+      modelRuntimeId: target.modelRuntimeId,
+      ...(target.acceleratorProfileId === undefined ? {} : {acceleratorProfileId: target.acceleratorProfileId}),
+    });
+    active.providerJobId = job.id;
+    while (!['complete', 'failed', 'cancelled'].includes(job.status)) {
+      if (active.controller.signal.aborted) {
+        await managed.provider.cancel(job.id).catch(() => undefined);
+        throw new Error('BENCHMARK_CANCELLED');
+      }
+      await wait(1_500);
+      job = await managed.provider.status(job.id);
+      await updateWanGPBenchmarkEntry(context, shot, targetId, {status: 'running', ...(job.metrics === undefined ? {} : {metrics: job.metrics})});
+      await emitWanGPBenchmarkProgress(context.projectId);
+    }
+    if (job.status !== 'complete' || !job.outputPath) {
+      throw new Error(job.status === 'cancelled' ? 'BENCHMARK_CANCELLED' : `${job.error?.code ?? job.status}:${job.error?.message ?? 'no output'}`);
+    }
+    await updateWanGPBenchmarkEntry(context, shot, targetId, {status: 'normalizing', ...(job.metrics === undefined ? {} : {metrics: job.metrics})});
+    await emitWanGPBenchmarkProgress(context.projectId);
+    const directory = benchmarkDirectory(context);
+    await fs.mkdir(directory, {recursive: true});
+    const outputPath = path.join(directory, `${targetId}.mp4`);
+    const encodeStartedAt = Date.now();
+    await normalizeVideo({
+      sourcePath: job.outputPath,
+      outputPath,
+      outputRoot: directory,
+      targetFps: tier.fps,
+      durationSeconds: frameCount / tier.fps,
+      overwrite: true,
+    });
+    const resources = await sampler.stop();
+    samplerStopped = true;
+    await updateWanGPBenchmarkEntry(context, shot, targetId, {
+      status: 'complete',
+      relativePath: path.relative(context.registration.root, outputPath).split(path.sep).join('/'),
+      metrics: {
+        ...(job.metrics ?? {}),
+        videoEncodeMs: Date.now() - encodeStartedAt,
+        totalMs: Date.now() - startedAt,
+        ...resources,
+      },
+      error: undefined,
+    });
+    await refreshWanGPBenchmarkContactSheet(context).catch((error) => {
+      console.warn('[wangp-benchmark] unable to refresh contact sheet', safeErrorMessage(error));
+    });
+  } catch (error) {
+    const resources = samplerStopped ? {} : await sampler.stop();
+    samplerStopped = true;
+    const cancelled = safeErrorMessage(error).includes('BENCHMARK_CANCELLED');
+    await updateWanGPBenchmarkEntry(context, shot, targetId, {
+      status: cancelled ? 'cancelled' : 'failed',
+      metrics: {totalMs: Date.now() - startedAt, ...resources},
+      error: cancelled ? '已取消。' : safeErrorMessage(error),
+    });
+  } finally {
+    if (!samplerStopped) await sampler.stop();
+    activeWanGPBenchmarkRuns.delete(context.projectId);
+    await active.lock.release();
+    await emitWanGPBenchmarkProgress(context.projectId).catch(() => undefined);
+  }
+};
+
+const startWanGPBenchmark = async (requestValue: unknown): Promise<WanGPBenchmarkSnapshot> => {
+  if (!requestValue || typeof requestValue !== 'object') throw new Error('WANGP_BENCHMARK_REQUEST_INVALID');
+  const request = requestValue as Partial<StartWanGPBenchmarkRequest>;
+  const context = await loadProductionContext(request.projectId);
+  if (!context) throw new Error('PRODUCTION_PLAN_NOT_FOUND');
+  if (context.registration.readOnly) throw new Error('PROJECT_READ_ONLY');
+  const shotId = requireId(request.shotId, 'SHOT_ID_INVALID');
+  const shot = context.plan.shots.find((candidate) => candidate.shotId === shotId);
+  if (!shot || shot.kind !== 'generated-performance') throw new Error('PRODUCTION_SHOT_NOT_GENERATED');
+  const targetId = requireId(request.targetId, 'WANGP_BENCHMARK_TARGET_INVALID') as WanGPBenchmarkTargetId;
+  const allowedTargets: WanGPBenchmarkTargetId[] = ['fun-inp-1.3b', 'fastwan-5b', 'enhanced-lightning-14b', 'lightx2v-4step'];
+  if (!allowedTargets.includes(targetId)) throw new Error('WANGP_BENCHMARK_TARGET_INVALID');
+  if (activeProductionRuns.size > 0 || activeNarrationRuns.size > 0 || activeWanGPBenchmarkRuns.size > 0) {
+    throw new Error('LOCAL_GENERATION_ALREADY_RUNNING');
+  }
+  const managed = productionProviders.get(context.projectId);
+  if (!managed?.snapshot.available || !managed.snapshot.catalog) throw new Error('WANGP_PROVIDER_NOT_READY');
+  const target = resolveWanGPBenchmarkTargets(managed.snapshot.catalog).find((candidate) => candidate.targetId === targetId);
+  if (!target?.modelRuntimeId) throw new Error('WANGP_BENCHMARK_TARGET_NOT_DISCOVERED');
+  const lock = await acquireProductionRunLock(context.registration.root, {kind: 'generation'});
+  const active: ActiveWanGPBenchmarkRun = {targetId, controller: new AbortController(), lock};
+  try {
+    activeWanGPBenchmarkRuns.set(context.projectId, active);
+    await updateWanGPBenchmarkEntry(context, shot, targetId, {status: 'queued', error: undefined});
+    void executeWanGPBenchmark(context, shot, targetId, active);
+    return buildWanGPBenchmarkSnapshot(context.projectId, context);
+  } catch (error) {
+    activeWanGPBenchmarkRuns.delete(context.projectId);
+    await lock.release();
+    throw error;
   }
 };
 
@@ -757,7 +1113,7 @@ const startProductionNarration = async (projectIdValue: unknown): Promise<Produc
   if (!context) throw new Error('PRODUCTION_PLAN_NOT_FOUND');
   if (context.registration.readOnly) throw new Error('PROJECT_READ_ONLY');
   if (activeNarrationRuns.has(context.projectId)) throw new Error('LOCAL_TTS_ALREADY_RUNNING');
-  if (activeProductionRuns.size > 0) throw new Error('LOCAL_GENERATION_ALREADY_RUNNING');
+  if (activeProductionRuns.size > 0 || activeWanGPBenchmarkRuns.size > 0) throw new Error('LOCAL_GENERATION_ALREADY_RUNNING');
   const controller = new AbortController();
   const lock = await acquireProductionRunLock(context.registration.root, {kind: 'narration'});
   const active: ActiveNarrationRun = {controller, lock};
@@ -790,8 +1146,7 @@ const resolveGenerationPreset = (
     preset.qualityTier === shot.generation.preset.quality
     && preset.width === shot.generation.raster.width
     && preset.height === shot.generation.raster.height
-    && preset.fps === shot.generation.timeline.fps
-    && preset.frameCount === shot.generation.timeline.frameCount);
+    && preset.fps === shot.generation.timeline.fps);
   if (!mapped) throw new Error(`WANGP_PRESET_UNAVAILABLE:${shot.generation.preset.id}`);
   return mapped;
 };
@@ -866,7 +1221,11 @@ const resetProductionCandidatesForRun = (
     candidate.status !== 'complete'
     || candidate.technicalQa?.result === 'fail'
     || candidate.humanDecision?.decision === 'reject');
-  const candidates = retryable.length > 0 ? retryable : shot.candidates;
+  // A user action launches exactly one expensive local generation.  The
+  // second fixed seed remains planned until the user explicitly asks for it.
+  const candidate = (retryable.length > 0 ? retryable : shot.candidates)[0];
+  if (!candidate) return {state: parseProductionState(state), candidateIds: []};
+  const candidates = [candidate];
   for (const candidate of candidates) {
     candidate.status = 'queued';
     delete candidate.startedAt;
@@ -891,12 +1250,16 @@ const runProductionShot = async (
   shot: GeneratedPerformanceShot,
   candidateIds: readonly string[],
   active: ActiveProductionRun,
+  selection: Pick<GenerateProductionShotRequest, 'configurationId' | 'modelRuntimeId' | 'acceleratorProfileId'>,
 ): Promise<void> => {
   const managed = productionProviders.get(context.projectId);
   if (!managed?.snapshot.available) throw new Error('WANGP_PROVIDER_NOT_READY');
   const presetResult = await raceWithAbortSignal(managed.provider.listPresets(), active.cancellation.signal);
   if (presetResult.outcome === 'aborted') return;
-  const preset = resolveGenerationPreset(shot, presetResult.value);
+  const preset = selection.configurationId === undefined
+    ? resolveGenerationPreset(shot, presetResult.value)
+    : presetResult.value.find((candidate) => candidate.id === selection.configurationId)
+      ?? resolveGenerationPreset(shot, presetResult.value);
   let state = context.state;
   for (const candidateId of candidateIds) {
     if (active.cancelRequested) break;
@@ -911,6 +1274,10 @@ const runProductionShot = async (
       progress: 0,
     });
     await emitProductionProgress(context.projectId, shot.shotId, candidateId);
+    const candidateStartedAt = Date.now();
+    const resourceSampler = new LocalResourceSampler();
+    let samplerStopped = false;
+    resourceSampler.start();
 
     try {
       const submissionPromise = managed.provider.submit({
@@ -937,7 +1304,7 @@ const runProductionShot = async (
         seed: candidate.seed,
         motionStrength: shot.generation.preset.motionStrength,
         presetId: preset.id,
-      });
+      }, selection);
       const submission = await raceWithAbortSignal(submissionPromise, active.cancellation.signal);
       if (submission.outcome === 'aborted') {
         // A late provider response must not keep the run lock hostage. If it
@@ -968,6 +1335,7 @@ const runProductionShot = async (
           providerJobId: current.id,
           status: current.status,
           progress: current.progress,
+          ...(current.metrics === undefined ? {} : {metrics: {...current.metrics}}),
           ...(current.error === undefined ? {} : {error: {code: current.error.code, message: current.error.message}}),
         });
         await emitProductionProgress(context.projectId, shot.shotId, candidateId);
@@ -1022,6 +1390,7 @@ const runProductionShot = async (
         candidateDirectory,
         `${candidateId}-${Date.now()}-${randomUUID().slice(0, 8)}.mp4`,
       );
+      const encodeStartedAt = Date.now();
       const normalizationPromise = normalizeVideo({
         sourcePath: job.outputPath,
         outputPath,
@@ -1060,7 +1429,19 @@ const runProductionShot = async (
         finishedAt: checkedAt,
       });
       state = await saveProductionContextState(context, state);
-      productionRuntimeProgress.delete(runtimeKey);
+      const resourceMetrics = await resourceSampler.stop();
+      samplerStopped = true;
+      productionRuntimeProgress.set(runtimeKey, {
+        providerJobId: job.id,
+        status: 'complete',
+        progress: 1,
+        metrics: {
+          ...(job.metrics ?? {}),
+          videoEncodeMs: Date.now() - encodeStartedAt,
+          totalMs: Date.now() - candidateStartedAt,
+          ...resourceMetrics,
+        },
+      });
     } catch (error) {
       const message = safeErrorMessage(error);
       if (active.cancelRequested) state = markProductionCandidateInterrupted(state, shot.shotId, candidateId);
@@ -1068,13 +1449,21 @@ const runProductionShot = async (
       state = await saveProductionContextState(context, state);
       const runtimeKey = productionCandidateKey(context.projectId, shot.shotId, candidateId);
       const previousRuntime = productionRuntimeProgress.get(runtimeKey);
+      const resourceMetrics = samplerStopped ? {} : await resourceSampler.stop();
+      samplerStopped = true;
       productionRuntimeProgress.set(runtimeKey, {
         status: active.cancelRequested ? previousRuntime?.status ?? 'running' : 'failed',
         progress: previousRuntime?.progress ?? 0,
+        metrics: {
+          ...(previousRuntime?.metrics ?? {}),
+          totalMs: Date.now() - candidateStartedAt,
+          ...resourceMetrics,
+        },
         error: {code: active.cancelRequested ? 'RUN_INTERRUPTED' : 'JOB_FAILED', message},
       });
       if (active.cancelRequested) break;
     } finally {
+      if (!samplerStopped) await resourceSampler.stop();
       delete active.currentCandidateId;
       delete active.currentJobId;
       await emitProductionProgress(context.projectId, shot.shotId, candidateId);
@@ -1092,7 +1481,7 @@ const startProductionShot = async (requestValue: unknown): Promise<ProductionSna
   const shot = context.plan.shots.find((entry) => entry.shotId === shotId);
   if (!shot || shot.kind !== 'generated-performance') throw new Error('PRODUCTION_SHOT_NOT_GENERATED');
   if (activeNarrationRuns.size > 0) throw new Error('LOCAL_TTS_ALREADY_RUNNING');
-  if (activeProductionRuns.size > 0) throw new Error('LOCAL_GENERATION_ALREADY_RUNNING');
+  if (activeProductionRuns.size > 0 || activeWanGPBenchmarkRuns.size > 0) throw new Error('LOCAL_GENERATION_ALREADY_RUNNING');
   const managed = productionProviders.get(context.projectId);
   if (!managed?.snapshot.available) throw new Error('WANGP_PROVIDER_NOT_READY:run local provider detection first');
 
@@ -1112,7 +1501,12 @@ const startProductionShot = async (requestValue: unknown): Promise<ProductionSna
     };
     const key = productionRunKey(context.projectId, shotId);
     activeProductionRuns.set(key, active);
-    void runProductionShot(context, shot, reset.candidateIds, active)
+    const selection = {
+      ...(request.configurationId === undefined ? {} : {configurationId: request.configurationId}),
+      ...(request.modelRuntimeId === undefined ? {} : {modelRuntimeId: request.modelRuntimeId}),
+      ...(request.acceleratorProfileId === undefined ? {} : {acceleratorProfileId: request.acceleratorProfileId}),
+    };
+    void runProductionShot(context, shot, reset.candidateIds, active, selection)
       .catch(async (error) => {
         console.error('[production] shot generation failed', error);
         await emitProductionProgress(context.projectId, shotId).catch(() => undefined);
@@ -1444,6 +1838,30 @@ const registerIpc = (): void => {
   handleTrustedIpc(
     IPC_CHANNELS.generateProductionShot,
     async (_event, request: unknown): Promise<ProductionSnapshot> => startProductionShot(request),
+  );
+
+  handleTrustedIpc(
+    IPC_CHANNELS.getWanGPBenchmark,
+    async (_event, projectId: unknown): Promise<WanGPBenchmarkSnapshot> => buildWanGPBenchmarkSnapshot(projectId),
+  );
+
+  handleTrustedIpc(
+    IPC_CHANNELS.startWanGPBenchmark,
+    async (_event, request: unknown): Promise<WanGPBenchmarkSnapshot> => startWanGPBenchmark(request),
+  );
+
+  handleTrustedIpc(
+    IPC_CHANNELS.cancelWanGPBenchmark,
+    async (_event, projectIdValue: unknown): Promise<WanGPBenchmarkSnapshot> => {
+      const context = await loadProductionContext(projectIdValue);
+      if (!context) throw new Error('PRODUCTION_PLAN_NOT_FOUND');
+      const active = activeWanGPBenchmarkRuns.get(context.projectId);
+      active?.controller.abort();
+      if (active?.providerJobId) {
+        await productionProviders.get(context.projectId)?.provider.cancel(active.providerJobId).catch(() => undefined);
+      }
+      return buildWanGPBenchmarkSnapshot(context.projectId, context);
+    },
   );
 
   handleTrustedIpc(

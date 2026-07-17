@@ -4,6 +4,8 @@ import type {
   ExportProgress,
   GenerateProductionShotRequest,
   ProductionProgress,
+  StartWanGPBenchmarkRequest,
+  WanGPBenchmarkSnapshot,
 } from '../shared/desktop-api.js';
 import {IPC_CHANNELS} from '../shared/desktop-api.js';
 
@@ -35,6 +37,14 @@ const api: DesktopApi = Object.freeze({
     const handler = (_event: Electron.IpcRendererEvent, progress: ProductionProgress) => listener(progress);
     ipcRenderer.on(IPC_CHANNELS.productionProgress, handler);
     return () => ipcRenderer.removeListener(IPC_CHANNELS.productionProgress, handler);
+  },
+  getWanGPBenchmark: (projectId: string) => ipcRenderer.invoke(IPC_CHANNELS.getWanGPBenchmark, projectId),
+  startWanGPBenchmark: (request: StartWanGPBenchmarkRequest) => ipcRenderer.invoke(IPC_CHANNELS.startWanGPBenchmark, request),
+  cancelWanGPBenchmark: (projectId: string) => ipcRenderer.invoke(IPC_CHANNELS.cancelWanGPBenchmark, projectId),
+  onWanGPBenchmarkProgress: (listener: (snapshot: WanGPBenchmarkSnapshot) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, snapshot: WanGPBenchmarkSnapshot) => listener(snapshot);
+    ipcRenderer.on(IPC_CHANNELS.wanGPBenchmarkProgress, handler);
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.wanGPBenchmarkProgress, handler);
   },
 });
 

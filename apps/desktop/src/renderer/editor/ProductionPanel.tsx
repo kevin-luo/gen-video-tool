@@ -24,6 +24,7 @@ import type {
 import {Modal} from '../components/Modal';
 import {WorkflowSteps, type WorkflowStage} from '../components/WorkflowSteps';
 import {desktopService} from '../services/desktop-service';
+import {WanGPBenchmarkPanel} from './WanGPBenchmarkPanel';
 
 interface ProductionPanelProps {
   projectId: string;
@@ -75,6 +76,10 @@ export function ProductionPanel({projectId, initialShotId, readOnly, onClose}: P
   const [detecting, setDetecting] = useState(false);
   const [pendingAction, setPendingAction] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [configurationId, setConfigurationId] = useState('');
+  const [modelRuntimeId, setModelRuntimeId] = useState('');
+  const [acceleratorProfileId, setAcceleratorProfileId] = useState('');
+  const [benchmarkOpen, setBenchmarkOpen] = useState(false);
   const automaticDetectionStarted = useRef(false);
 
   const load = useCallback(async () => {
@@ -110,6 +115,23 @@ export function ProductionPanel({projectId, initialShotId, readOnly, onClose}: P
     () => snapshot?.shots.filter((shot) => shot.kind === 'generated-performance') ?? [],
     [snapshot],
   );
+
+  const catalog = snapshot?.provider?.catalog;
+  const selectedTier = catalog?.tiers.find((tier) => tier.configurationId === configurationId);
+  const selectedModel = catalog?.models.find((model) => model.runtimeModelId === modelRuntimeId);
+  const compatibleProfiles = catalog?.acceleratorProfiles.filter((profile) => (
+    selectedModel?.profileDirectories.includes(profile.directory)
+  )) ?? [];
+
+  useEffect(() => {
+    if (!catalog?.tiers.length) return;
+    const current = catalog.tiers.find((tier) => tier.configurationId === configurationId && tier.available);
+    const tier = current ?? catalog.tiers.find((candidate) => candidate.available) ?? catalog.tiers[0];
+    if (!tier) return;
+    setConfigurationId(tier.configurationId);
+    setModelRuntimeId(tier.modelRuntimeId);
+    setAcceleratorProfileId(tier.acceleratorProfileId ?? '');
+  }, [catalog, configurationId]);
 
   useEffect(() => {
     if (!generatedShots.length) return;
@@ -148,7 +170,15 @@ export function ProductionPanel({projectId, initialShotId, readOnly, onClose}: P
     if (!shot) return;
     setPendingAction(`generate:${shot.shotId}`);
     setError(null);
-    try { setSnapshot(await desktopService.generateProductionShot({projectId, shotId: shot.shotId})); }
+    try {
+      setSnapshot(await desktopService.generateProductionShot({
+        projectId,
+        shotId: shot.shotId,
+        ...(configurationId ? {configurationId} : {}),
+        ...(modelRuntimeId ? {modelRuntimeId} : {}),
+        ...(acceleratorProfileId ? {acceleratorProfileId} : {}),
+      }));
+    }
     catch (reason) { setError(readableError(reason, '启动本地生成失败')); }
     finally { setPendingAction(null); }
   };
@@ -248,6 +278,10 @@ export function ProductionPanel({projectId, initialShotId, readOnly, onClose}: P
     </>
   );
 
+  if (benchmarkOpen) {
+    return <WanGPBenchmarkPanel projectId={projectId} shotIds={generatedShots.map((entry) => entry.shotId)} initialShotId={shot?.shotId ?? initialShotId} onClose={() => setBenchmarkOpen(false)} />;
+  }
+
   return (
     <Modal
       title="本地制作"
@@ -299,6 +333,7 @@ export function ProductionPanel({projectId, initialShotId, readOnly, onClose}: P
               </div>
               <div className="production-provider__actions">
                 {providerReady ? <span className="production-local-badge"><ShieldCheck size={14} />离线可用</span> : null}
+                {providerReady ? <button type="button" className="button button--quiet button--compact" disabled={Boolean(activeCandidate)} onClick={() => setBenchmarkOpen(true)}><Cpu size={14} />性能基准</button> : null}
                 <button type="button" className="button button--quiet button--compact" disabled={detecting || Boolean(activeCandidate)} onClick={() => void detectProvider()}>
                   {detecting ? <LoaderCircle className="spin" size={14} /> : <RefreshCw size={14} />}
                   {detecting ? '检测中' : provider ? '重新检测' : '检测本地环境'}
@@ -306,19 +341,73 @@ export function ProductionPanel({projectId, initialShotId, readOnly, onClose}: P
               </div>
               {provider?.reason ? <p className={providerReady ? 'production-provider__note' : 'production-provider__note is-error'}>{provider.reason}</p> : null}
               {activeCandidate ? <p className="production-provider__note">当前候选仍在生成，任务结束后才能重新检测运行时。</p> : null}
+              {catalog?.tiers.length ? (
+                <div className="production-provider__config">
+                  <label>
+                    <span>生成档位</span>
+                    <select
+                      value={configurationId}
+                      disabled={Boolean(activeCandidate)}
+                      onChange={(event) => {
+                        const tier = catalog.tiers.find((candidate) => candidate.configurationId === event.target.value);
+                        setConfigurationId(event.target.value);
+                        if (tier) {
+                          setModelRuntimeId(tier.modelRuntimeId);
+                          setAcceleratorProfileId(tier.acceleratorProfileId ?? '');
+                        }
+                      }}
+                    >
+                      {catalog.tiers.map((tier) => (
+                        <option key={tier.configurationId} value={tier.configurationId} disabled={!tier.available}>
+                          {tier.tier} · {tier.modelLabel} · {tier.steps} 步
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    <span>本地模型 / 微调</span>
+                    <select
+                      value={modelRuntimeId}
+                      disabled={Boolean(activeCandidate)}
+                      onChange={(event) => {
+                        setModelRuntimeId(event.target.value);
+                        setAcceleratorProfileId('');
+                      }}
+                    >
+                      {catalog.models.filter((model) => model.imageToVideo).map((model) => (
+                        <option key={model.runtimeModelId} value={model.runtimeModelId} disabled={model.availability === 'missing'}>
+                          {model.label} · {model.availability}{model.finetune ? ' · finetune' : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    <span>加速配置 / LoRA</span>
+                    <select value={acceleratorProfileId} disabled={Boolean(activeCandidate)} onChange={(event) => setAcceleratorProfileId(event.target.value)}>
+                      <option value="">模型默认配置</option>
+                      {compatibleProfiles.map((profile) => (
+                        <option key={profile.id} value={profile.id}>{profile.label}{profile.steps ? ` · ${profile.steps} 步` : ''}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <p>
+                    {selectedTier ? `${selectedTier.frameCount} 帧 · 显存档 4 · Attention Auto · ${selectedTier.cachePolicy.kind === 'off' ? '关闭缓存' : `${selectedTier.cachePolicy.kind.toUpperCase()} 缓存`}` : '等待能力匹配'}
+                  </p>
+                </div>
+              ) : null}
             </header>
 
             {shot ? (
               <div className="production-shot">
                 <div className="production-shot__heading">
-                  <div><span className="eyebrow">{shot.shotId}</span><h3>整帧人物表演候选</h3><p>两个固定 seed 逐个生成。技术检查通过后仍需人工确认动作方向、接触时机和肢体完整性。</p></div>
+                  <div><span className="eyebrow">{shot.shotId}</span><h3>整帧人物表演候选</h3><p>每次只生成一个固定 seed；需要第二版时由你明确点击“再生成一个”。技术检查通过后仍需人工确认动作方向、接触时机和肢体完整性。</p></div>
                   <div className="production-shot__actions">
                   {activeCandidate ? (
                     <button type="button" className="button button--danger button--compact" disabled={pendingAction !== null} onClick={() => void cancel()}><CircleStop size={14} />取消当前任务</button>
                   ) : (
                     <button type="button" className="button button--primary" disabled={generationLocked} onClick={() => void generate()}>
                       {pendingAction?.startsWith('generate:') ? <LoaderCircle className="spin" size={15} /> : shot.candidates.some((candidate) => candidate.status === 'complete') ? <RotateCcw size={15} /> : <WandSparkles size={15} />}
-                      {shot.candidates.some((candidate) => candidate.status === 'complete') ? '重新生成两版' : '生成两版候选'}
+                      {shot.candidates.some((candidate) => candidate.status === 'complete') ? '再生成一个' : '生成首个候选'}
                     </button>
                   )}
                   {!activeCandidate && generationBlockReason ? <small>{generationBlockReason}</small> : null}
@@ -344,6 +433,13 @@ export function ProductionPanel({projectId, initialShotId, readOnly, onClose}: P
                         <span>{candidate.technicalQa?.status === 'passed' ? <><ShieldCheck size={13} />技术检查通过</> : candidate.technicalQa?.status === 'failed' ? <><TriangleAlert size={13} />技术检查失败</> : '尚未完成技术检查'}</span>
                         {candidate.sha256 ? <code title={candidate.sha256}>{candidate.sha256.slice(0, 10)}</code> : null}
                       </div>
+                      {candidate.metrics ? (
+                        <div className="production-candidate__metrics">
+                          <span>总计 {candidate.metrics.totalMs ? `${(candidate.metrics.totalMs / 1_000).toFixed(1)}s` : '—'}</span>
+                          <span>去噪 {candidate.metrics.denoiseMs ? `${(candidate.metrics.denoiseMs / 1_000).toFixed(1)}s` : '—'}</span>
+                          <span>显存峰值 {candidate.metrics.peakVramMb ? `${candidate.metrics.peakVramMb} MB` : '—'}</span>
+                        </div>
+                      ) : null}
                       {candidate.error ? <p className="production-candidate__error">{candidate.error.code}: {candidate.error.message}</p> : null}
                       <footer>
                         <button type="button" className="button button--quiet button--compact" disabled={candidate.status !== 'complete' || pendingAction !== null || readOnly} onClick={() => void decide(candidate, 'reject')}><Ban size={14} />不采用</button>

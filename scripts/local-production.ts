@@ -10,6 +10,7 @@ import {
   completeProductionCandidate,
   createProductionState,
   detectLocalGenerationCapability,
+  discoverLocalWanGPAcceleratorProfiles,
   loadProductionPlan,
   loadProductionState,
   loadProductionStateForRestart,
@@ -83,14 +84,12 @@ export const resolveLocalGenerationPreset = (
     preset.qualityTier === shot.generation.preset.quality
     && preset.width === shot.generation.raster.width
     && preset.height === shot.generation.raster.height
-    && preset.fps === shot.generation.timeline.fps
-    && preset.frameCount === shot.generation.timeline.frameCount);
+    && preset.fps === shot.generation.timeline.fps);
   if (!compatible) throw new Error(`WANGP_PRESET_UNAVAILABLE:${shot.generation.preset.id}`);
   if (
     compatible.width !== shot.generation.raster.width
     || compatible.height !== shot.generation.raster.height
     || compatible.fps !== shot.generation.timeline.fps
-    || compatible.frameCount !== shot.generation.timeline.frameCount
   ) {
     throw new Error(`WANGP_PRESET_CONTRACT_MISMATCH:${compatible.id}`);
   }
@@ -225,7 +224,9 @@ const openProvider = async (projectRoot: string): Promise<OpenProvider> => {
     provider: new WanGPProvider({
       transport: runtime.transport,
       outputDirectory: path.join(providerRoot, 'provider-jobs'),
-      preferredModelTypes: {preview: 'fun_inp_1.3B', quality: 'fun_inp_1.3B'},
+      ...(runtime.root === undefined
+        ? {}
+        : {profileSource: (directories) => discoverLocalWanGPAcceleratorProfiles(runtime.root!, directories)}),
       callbacks: {
         persistJob: async (job) => { await jobStore.upsert({...job}); },
         log: (level, message, details) => console.error(`[wangp:${level}] ${message}`, details ?? ''),
@@ -253,6 +254,7 @@ export const detectLocalProductionRuntime = async (projectRootValue: string) => 
       ...(cudaRuntime.reason === undefined ? {} : {cudaRuntimeReason: cudaRuntime.reason}),
     });
     const presets = provider.available ? await opened.provider.listPresets() : [];
+    const catalog = provider.available ? await opened.provider.getCapabilityCatalog() : undefined;
     const requestedShots: Array<{
       shotId: string;
       ready: boolean;
@@ -286,6 +288,7 @@ export const detectLocalProductionRuntime = async (projectRootValue: string) => 
       cudaRuntime,
       capability,
       presets,
+      ...(catalog === undefined ? {} : {catalog}),
       requestedShots,
     };
   } finally {
@@ -327,7 +330,13 @@ export const generateLocalProductionShot = async (
     if (!cuda.available) throw new Error(`WANGP_CUDA_RUNTIME_UNAVAILABLE:${cuda.reason ?? 'unknown'}`);
     const preset = resolveLocalGenerationPreset(shot, await opened.provider.listPresets());
 
-    for (const plannedCandidate of shotState.candidates) {
+    const nextCandidate = shotState.candidates.find((candidate) => (
+      candidate.status !== 'complete'
+      || candidate.technicalQa?.result !== 'pass'
+      || candidate.humanDecision?.decision === 'reject'
+    )) ?? shotState.candidates[0];
+    if (!nextCandidate) throw new Error(`PRODUCTION_NO_CANDIDATE_TO_GENERATE:${shot.shotId}`);
+    for (const plannedCandidate of [nextCandidate]) {
       state = makeCandidateRetryable(state, shot.shotId, plannedCandidate.candidateId);
       let candidate = state.shots.find((entry) => entry.shotId === shot.shotId)?.candidates
         .find((entry) => entry.candidateId === plannedCandidate.candidateId);

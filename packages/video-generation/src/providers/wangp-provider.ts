@@ -19,6 +19,19 @@ import {
   type WanGPMcpClient,
   type WanGPMcpTool,
 } from './wangp-transport.js';
+import {
+  applyWanGPCachePolicy,
+  buildWanGPAcceleratorProfile,
+  buildWanGPCapabilityCatalog,
+  buildWanGPModelCapability,
+  resolveWanGPCachePolicy,
+  type WanGPAcceleratorProfile,
+  type WanGPAcceleratorProfileSource,
+  type WanGPCapabilityCatalog,
+  type WanGPModelCapability,
+  type WanGPTierSelection,
+} from './wangp-capabilities.js';
+import {WanGPTelemetryTracker} from './wangp-telemetry.js';
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -37,6 +50,9 @@ type InternalModel = {
 type InternalPreset = {
   publicPreset: VideoGenerationPreset;
   model: InternalModel;
+  modelCapability: WanGPModelCapability;
+  profile?: WanGPAcceleratorProfile;
+  tier: WanGPTierSelection;
 };
 
 type StagedKeyframes = {
@@ -46,7 +62,7 @@ type StagedKeyframes = {
 
 type WanGPEvent = {
   kind: string;
-  timestamp?: string;
+  timestamp?: number | string;
   data?: unknown;
 };
 
@@ -71,6 +87,7 @@ type InternalJob = {
   input: VideoGenerationInput;
   preset: InternalPreset;
   workDirectory: string;
+  telemetry: WanGPTelemetryTracker;
   backendJobId?: string;
 };
 
@@ -78,9 +95,17 @@ export type WanGPProviderOptions = {
   transport: WanGPMcpClient;
   /** App-owned directory where verified results and ASCII-safe staging files live. */
   outputDirectory: string;
-  /** Provider-owned mapping for a hardware-specific preset. */
+  /** @deprecated Dynamic metadata matching is used; retained for source compatibility. */
   preferredModelTypes?: Partial<Record<'preview' | 'quality', string>>;
+  /** Reads only profile directories advertised by WanGP MCP model schemas. */
+  profileSource?: (directories: readonly string[]) => Promise<WanGPAcceleratorProfileSource[]>;
   callbacks?: VideoGenerationProviderCallbacks;
+};
+
+export type WanGPSubmitOptions = {
+  configurationId?: string;
+  modelRuntimeId?: string;
+  acceleratorProfileId?: string;
 };
 
 const REQUIRED_TOOLS = [
@@ -94,31 +119,8 @@ const REQUIRED_TOOLS = [
   'wangp_cancel_job',
 ] as const;
 
-const FAST_PRESET: VideoGenerationPreset = {
-  id: 'local-i2v-fast-portrait',
-  label: 'Local I2V Fast Portrait',
-  width: 480,
-  height: 832,
-  fps: 24,
-  frameCount: 81,
-  candidateCount: 2,
-  qualityTier: 'preview',
-  allowUpscale: true,
-  allowInterpolation: false,
-};
-
-const QUALITY_PRESET: VideoGenerationPreset = {
-  id: 'local-i2v-quality-portrait',
-  label: 'Local I2V Quality Portrait',
-  width: 480,
-  height: 832,
-  fps: 24,
-  frameCount: 81,
-  candidateCount: 2,
-  qualityTier: 'quality',
-  allowUpscale: true,
-  allowInterpolation: true,
-};
+const LEGACY_FAST_PRESET_ID = 'local-i2v-fast-portrait';
+const LEGACY_QUALITY_PRESET_ID = 'local-i2v-quality-portrait';
 
 const VIDEO_EXTENSIONS = new Set(['.mp4', '.mov', '.mkv', '.webm', '.avi', '.m4v']);
 
@@ -192,6 +194,25 @@ function modelArray(result: unknown): UnknownRecord[] {
   return [];
 }
 
+function profileArray(result: unknown): UnknownRecord[] {
+  if (Array.isArray(result)) return result.filter(isRecord);
+  if (!isRecord(result)) return [];
+  for (const key of ['profiles', 'accelerator_profiles', 'items']) {
+    const value = result[key];
+    if (Array.isArray(value)) return value.filter(isRecord);
+  }
+  return [];
+}
+
+function profileSourceFromRecord(value: UnknownRecord): WanGPAcceleratorProfileSource | null {
+  const settings = isRecord(value.settings) ? value.settings : value;
+  const directory = asString(value.directory ?? value.profile_directory ?? value.profiles_dir);
+  const label = asString(value.label ?? value.name ?? value.title);
+  const relativePath = asString(value.relative_path ?? value.relativePath ?? value.path);
+  if (!directory || !label || !relativePath) return null;
+  return {directory, label, relativePath, settings, source: 'mcp'};
+}
+
 function unwrapRecord(result: unknown, preferredKeys: readonly string[]): UnknownRecord {
   if (!isRecord(result)) {
     return {};
@@ -211,38 +232,6 @@ function sanitizePathPart(value: string): string {
 
 function isTerminal(status: VideoGenerationStatus): boolean {
   return status === 'complete' || status === 'failed' || status === 'cancelled';
-}
-
-function collectResolutionValues(value: unknown, activeKey = ''): Set<string> {
-  const result = new Set<string>();
-  const visit = (entry: unknown, keyPath: string): void => {
-    const normalizedPath = keyPath.toLowerCase();
-    // WanGP's default settings expose one illustrative landscape resolution
-    // (832x480) even when the model accepts the corresponding portrait canvas.
-    // Only explicit capability/choice fields should constrain a public preset.
-    if (normalizedPath.includes('default_settings') || normalizedPath.includes('defaults')) {
-      return;
-    }
-    if (typeof entry === 'string') {
-      if (normalizedPath.includes('resolution') && /^\d{2,5}x\d{2,5}$/i.test(entry)) {
-        result.add(entry.toLowerCase());
-      }
-      return;
-    }
-    if (Array.isArray(entry)) {
-      for (const item of entry) {
-        visit(item, keyPath);
-      }
-      return;
-    }
-    if (isRecord(entry)) {
-      for (const [key, item] of Object.entries(entry)) {
-        visit(item, `${keyPath}.${key}`);
-      }
-    }
-  };
-  visit(value, activeKey);
-  return result;
 }
 
 function modelSupportsEndKeyframe(model: InternalModel): boolean {
@@ -364,7 +353,10 @@ function parseSnapshot(value: unknown): WanGPJobSnapshot {
         .filter(isRecord)
         .map((event): WanGPEvent => {
           const kind = asString(event.kind ?? event.type ?? event.event) ?? 'unknown';
-          const timestamp = asString(event.timestamp ?? event.time);
+          const rawTimestamp = event.timestamp ?? event.time;
+          const timestamp = typeof rawTimestamp === 'number' && Number.isFinite(rawTimestamp)
+            ? rawTimestamp
+            : asString(rawTimestamp);
           return {
             kind,
             ...(timestamp === undefined ? {} : { timestamp }),
@@ -453,21 +445,24 @@ export class WanGPProvider implements VideoGenerationProvider {
 
   readonly #transport: WanGPMcpClient;
   readonly #outputDirectory: string;
-  readonly #preferredModelTypes: Partial<Record<'preview' | 'quality', string>>;
+  readonly #profileSource?: WanGPProviderOptions['profileSource'];
   readonly #callbacks: VideoGenerationProviderCallbacks;
   readonly #jobs = new Map<string, InternalJob>();
   #tools: WanGPMcpTool[] | undefined;
   #models: InternalModel[] | undefined;
   #presets: InternalPreset[] | undefined;
+  #capabilityCatalog: WanGPCapabilityCatalog | undefined;
+  #startupMs: number | undefined;
 
   constructor(options: WanGPProviderOptions) {
     this.#transport = options.transport;
     this.#outputDirectory = path.resolve(options.outputDirectory);
-    this.#preferredModelTypes = options.preferredModelTypes ?? {};
+    this.#profileSource = options.profileSource;
     this.#callbacks = options.callbacks ?? {};
   }
 
   async detect(): Promise<VideoProviderDetection> {
+    const startedAt = performance.now();
     try {
       await this.#transport.connect();
       const tools = await this.#transport.listTools();
@@ -490,6 +485,7 @@ export class WanGPProvider implements VideoGenerationProvider {
         };
       }
       const version = this.#transport.serverInfo.version;
+      this.#startupMs = performance.now() - startedAt;
       return {
         available: true,
         endpoint: this.#transport.endpointDescription,
@@ -499,6 +495,7 @@ export class WanGPProvider implements VideoGenerationProvider {
           : { reason: 'WanGP is reachable; the selected low-VRAM model will download on first generation.' }),
       };
     } catch (error) {
+      this.#startupMs = performance.now() - startedAt;
       const classified = classifyWanGPError(error);
       return {
         available: false,
@@ -509,14 +506,81 @@ export class WanGPProvider implements VideoGenerationProvider {
   }
 
   async listPresets(): Promise<VideoGenerationPreset[]> {
-    await this.#discoverModels(true);
+    await this.getCapabilityCatalog(true);
     const presets = await this.#getInternalPresets();
     return presets.map(({ publicPreset }) => ({ ...publicPreset }));
   }
 
-  async submit(input: VideoGenerationInput): Promise<VideoGenerationJob> {
+  async getCapabilityCatalog(force = false): Promise<WanGPCapabilityCatalog> {
+    if (!force && this.#capabilityCatalog !== undefined) return structuredClone(this.#capabilityCatalog);
+    const models = await this.#discoverModels(force);
+    const tools = this.#tools ?? await this.#transport.listTools().catch(() => []);
+    this.#tools = tools;
+    const toolNames = new Set(tools.map((tool) => tool.name));
+
+    if (toolNames.has('wangp_list_model_defs')) {
+      try {
+        const rawDefinitions = await this.#transport.callTool('wangp_list_model_defs', {
+          main_output: 'video',
+          inputs: 'image',
+        });
+        const definitions = modelArray(rawDefinitions);
+        const byId = new Map(definitions.flatMap((definition) => {
+          const id = asString(definition.model_type ?? definition.modelType ?? definition.id);
+          return id === undefined ? [] : [[id, definition] as const];
+        }));
+        for (const model of models) {
+          const definition = byId.get(model.modelType);
+          if (definition !== undefined) {
+            model.schema = {model_def: definition, metadata: model.raw};
+            if (model.defaultSettings === undefined && isRecord(definition.settings)) {
+              model.defaultSettings = {...definition.settings};
+            }
+          }
+        }
+      } catch (error) {
+        this.#callbacks.log?.('warn', 'Unable to read WanGP model definitions in one MCP call', {
+          message: serializeError(error),
+        });
+      }
+    }
+
+    let capabilities = models.flatMap((model) => {
+      const capability = buildWanGPModelCapability({
+        raw: model.raw,
+        ...(model.schema === undefined ? {} : {schema: model.schema}),
+        ...(model.defaultSettings === undefined ? {} : {defaultSettings: model.defaultSettings}),
+      });
+      return capability === null || !capability.imageToVideo ? [] : [capability];
+    });
+    const provisional = buildWanGPCapabilityCatalog({models: capabilities, profiles: []});
+    const shortlisted = new Set([
+      ...provisional.tiers.map((tier) => tier.modelRuntimeId),
+      ...capabilities.filter((model) => model.availability === 'available').map((model) => model.runtimeModelId),
+    ]);
+    for (const model of models) {
+      if (shortlisted.has(model.modelType)) await this.#hydrateModel(model);
+    }
+    capabilities = models.flatMap((model) => {
+      const capability = buildWanGPModelCapability({
+        raw: model.raw,
+        ...(model.schema === undefined ? {} : {schema: model.schema}),
+        ...(model.defaultSettings === undefined ? {} : {defaultSettings: model.defaultSettings}),
+      });
+      return capability === null || !capability.imageToVideo ? [] : [capability];
+    });
+
+    const profileDirectories = [...new Set(capabilities.flatMap((model) => model.profileDirectories))];
+    const rawProfiles = await this.#discoverAcceleratorProfiles(profileDirectories, toolNames);
+    const profiles = rawProfiles.map(buildWanGPAcceleratorProfile);
+    this.#capabilityCatalog = buildWanGPCapabilityCatalog({models: capabilities, profiles});
+    this.#presets = undefined;
+    return structuredClone(this.#capabilityCatalog);
+  }
+
+  async submit(input: VideoGenerationInput, options: WanGPSubmitOptions = {}): Promise<VideoGenerationJob> {
     this.#validateInput(input);
-    const preset = await this.#resolvePreset(input.presetId);
+    const preset = await this.#resolvePreset(input.presetId, options);
     this.#validatePresetInput(input, preset);
     if (input.endKeyframePath !== undefined && !modelSupportsEndKeyframe(preset.model)) {
       throw new VideoProviderError(
@@ -542,7 +606,11 @@ export class WanGPProvider implements VideoGenerationProvider {
       updatedAt: now,
       ...(input.seed === undefined ? {} : { seed: input.seed }),
     };
-    const internal: InternalJob = { publicJob, input: { ...input }, preset, workDirectory };
+    const telemetry = new WanGPTelemetryTracker(
+      this.#startupMs === undefined ? {} : {startupMs: this.#startupMs},
+    );
+    publicJob.metrics = telemetry.snapshot();
+    const internal: InternalJob = { publicJob, input: { ...input }, preset, workDirectory, telemetry };
     this.#jobs.set(publicId, internal);
     await this.#publish(internal);
 
@@ -553,7 +621,7 @@ export class WanGPProvider implements VideoGenerationProvider {
       const response = await this.#transport.callTool('wangp_generate', {
         source,
         wait: false,
-        event_limit: 20,
+        event_limit: 500,
       });
       const snapshot = parseSnapshot(response);
       internal.backendJobId = snapshot.jobId;
@@ -582,7 +650,7 @@ export class WanGPProvider implements VideoGenerationProvider {
     try {
       const response = await this.#transport.callTool('wangp_get_job', {
         job_id: internal.backendJobId,
-        event_limit: 20,
+        event_limit: 500,
       });
       await this.#applySnapshot(internal, parseSnapshot(response));
     } catch (error) {
@@ -635,6 +703,29 @@ export class WanGPProvider implements VideoGenerationProvider {
     return destination;
   }
 
+  async #discoverAcceleratorProfiles(
+    directories: readonly string[],
+    toolNames: ReadonlySet<string>,
+  ): Promise<WanGPAcceleratorProfileSource[]> {
+    if (toolNames.has('wangp_list_accelerator_profiles')) {
+      try {
+        const response = await this.#transport.callTool('wangp_list_accelerator_profiles', {
+          profile_directories: directories,
+        });
+        return profileArray(response).flatMap((profile) => {
+          const source = profileSourceFromRecord(profile);
+          return source === null ? [] : [source];
+        });
+      } catch (error) {
+        this.#callbacks.log?.('warn', 'WanGP MCP accelerator profile discovery failed', {
+          message: serializeError(error),
+        });
+      }
+    }
+    if (this.#profileSource === undefined) return [];
+    return this.#profileSource(directories);
+  }
+
   async #discoverModels(force = false): Promise<InternalModel[]> {
     if (!force && this.#models !== undefined) {
       return this.#models;
@@ -682,6 +773,7 @@ export class WanGPProvider implements VideoGenerationProvider {
     }
     this.#models = candidates;
     this.#presets = undefined;
+    this.#capabilityCatalog = undefined;
     return candidates;
   }
 
@@ -707,72 +799,104 @@ export class WanGPProvider implements VideoGenerationProvider {
   }
 
   async #getInternalPresets(): Promise<InternalPreset[]> {
-    if (this.#presets !== undefined) {
-      return this.#presets;
-    }
+    if (this.#presets !== undefined) return this.#presets;
+    const catalog = await this.getCapabilityCatalog();
     const models = await this.#discoverModels();
-    if (models.length === 0) {
-      this.#presets = [];
-      return [];
-    }
-    const fast = this.#chooseModel(models, 'preview');
-    const quality = this.#chooseModel(models, 'quality');
-    const selected = [...new Set([fast, quality].filter((model): model is InternalModel => model !== undefined))];
-    for (const model of selected) {
-      await this.#hydrateModel(model);
-    }
+    const modelsById = new Map(models.map((model) => [model.modelType, model]));
+    const capabilitiesById = new Map(catalog.models.map((model) => [model.runtimeModelId, model]));
+    const profilesById = new Map(catalog.acceleratorProfiles.map((profile) => [profile.id, profile]));
     const presets: InternalPreset[] = [];
-    if (fast !== undefined && this.#supportsPreset(fast, FAST_PRESET)) {
-      presets.push({ publicPreset: { ...FAST_PRESET }, model: fast });
-    }
-    if (quality !== undefined && this.#supportsPreset(quality, QUALITY_PRESET)) {
-      presets.push({ publicPreset: { ...QUALITY_PRESET }, model: quality });
+    for (const tier of catalog.tiers) {
+      const model = modelsById.get(tier.modelRuntimeId);
+      const modelCapability = capabilitiesById.get(tier.modelRuntimeId);
+      if (!model || !modelCapability) continue;
+      await this.#hydrateModel(model);
+      const profile = tier.acceleratorProfileId === undefined
+        ? undefined
+        : profilesById.get(tier.acceleratorProfileId);
+      presets.push({
+        publicPreset: {
+          id: tier.configurationId,
+          label: `${tier.tier} · ${tier.modelLabel}`,
+          width: tier.width,
+          height: tier.height,
+          fps: tier.fps,
+          frameCount: tier.frameCount,
+          candidateCount: 1,
+          qualityTier: tier.tier === 'quality-local' ? 'quality' : 'preview',
+          allowUpscale: true,
+          allowInterpolation: tier.tier !== 'ultra-preview',
+        },
+        model,
+        modelCapability,
+        ...(profile === undefined ? {} : {profile}),
+        tier,
+      });
     }
     this.#presets = presets;
     return presets;
   }
 
-  #scoreModel(model: InternalModel, tier: 'preview' | 'quality'): number {
-    const text = `${model.modelType} ${model.label} ${serializeError(model.raw)}`.toLowerCase();
-    if (tier === 'preview') {
-      let score = 0;
-      if (/distill|turbo|fast|lightning|lcm|step/.test(text)) score += 30;
-      if (/1[._]?3b|small|low.?vram|fun_inp/.test(text)) score += 25;
-      if (/14b|22b|quality|pro/.test(text)) score -= 10;
-      return score;
-    }
-    let score = 0;
-    if (/quality|14b|22b|2[._-]?2|ltx.?2/.test(text)) score += 25;
-    if (/1[._]?3b|small|low.?vram/.test(text)) score -= 10;
-    return score;
-  }
-
-  #chooseModel(models: InternalModel[], tier: 'preview' | 'quality'): InternalModel | undefined {
-    const preferred = this.#preferredModelTypes[tier];
-    if (preferred !== undefined) {
-      const exact = models.find((model) => model.modelType === preferred);
-      if (exact !== undefined) return exact;
-    }
-    const readiness = (model: InternalModel): number =>
-      model.availability === 'available' ? 100 : model.availability === 'partial' ? 20 : 0;
-    return [...models].sort((a, b) =>
-      readiness(b) + this.#scoreModel(b, tier) - readiness(a) - this.#scoreModel(a, tier))[0];
-  }
-
-  #supportsPreset(model: InternalModel, preset: VideoGenerationPreset): boolean {
-    const resolutions = collectResolutionValues({ schema: model.schema, metadata: model.metadata });
-    return resolutions.size === 0 || resolutions.has(`${preset.width}x${preset.height}`);
-  }
-
-  async #resolvePreset(id: string): Promise<InternalPreset> {
-    const preset = (await this.#getInternalPresets()).find((candidate) => candidate.publicPreset.id === id);
-    if (preset === undefined) {
+  async #resolvePreset(id: string, options: WanGPSubmitOptions = {}): Promise<InternalPreset> {
+    const presets = await this.#getInternalPresets();
+    const requestedId = options.configurationId ?? id;
+    const requestedTier = requestedId === LEGACY_FAST_PRESET_ID
+      ? 'balanced-local'
+      : requestedId === LEGACY_QUALITY_PRESET_ID ? 'quality-local' : undefined;
+    const basePreset = presets.find((candidate) => candidate.publicPreset.id === requestedId)
+      ?? (requestedTier === undefined ? undefined : presets.find((candidate) => candidate.tier.tier === requestedTier));
+    if (basePreset === undefined) {
       throw new VideoProviderError(
         'MODEL_MISSING',
-        `Video preset is not available on this WanGP installation: ${id}`,
+        `Video preset is not available on this WanGP installation: ${requestedId}`,
       );
     }
-    return preset;
+    if (options.modelRuntimeId === undefined) return basePreset;
+    const catalog = await this.getCapabilityCatalog();
+    const modelCapability = catalog.models.find((model) => model.runtimeModelId === options.modelRuntimeId);
+    const model = (await this.#discoverModels()).find((candidate) => candidate.modelType === options.modelRuntimeId);
+    if (!model || !modelCapability || !modelCapability.imageToVideo) {
+      throw new VideoProviderError('MODEL_MISSING', 'Selected WanGP model is not an MCP-advertised image-to-video model.');
+    }
+    const profile = options.acceleratorProfileId === undefined
+      ? undefined
+      : catalog.acceleratorProfiles.find((candidate) => candidate.id === options.acceleratorProfileId);
+    if (options.acceleratorProfileId !== undefined && (
+      profile === undefined || !modelCapability.profileDirectories.includes(profile.directory)
+    )) {
+      throw new VideoProviderError('INVALID_REQUEST', 'Selected accelerator profile is not compatible with the selected WanGP model metadata.');
+    }
+    await this.#hydrateModel(model);
+    const steps = profile?.steps ?? modelCapability.defaultSteps ?? basePreset.tier.steps;
+    const guidance = profile?.guidance ?? modelCapability.defaultGuidance ?? basePreset.tier.guidance;
+    const {
+      acceleratorProfileId: _baseProfileId,
+      acceleratorProfileLabel: _baseProfileLabel,
+      ...baseTier
+    } = basePreset.tier;
+    return {
+      ...basePreset,
+      model,
+      modelCapability,
+      ...(profile === undefined ? {} : {profile}),
+      tier: {
+        ...baseTier,
+        modelRuntimeId: modelCapability.runtimeModelId,
+        modelLabel: modelCapability.label,
+        steps,
+        guidance,
+        quantization: modelCapability.quantization,
+        cachePolicy: resolveWanGPCachePolicy({
+          model: modelCapability,
+          ...(profile === undefined ? {} : {profile}),
+          steps,
+        }),
+        ...(profile === undefined ? {} : {
+          acceleratorProfileId: profile.id,
+          acceleratorProfileLabel: profile.label,
+        }),
+      },
+    };
   }
 
   #validateInput(input: VideoGenerationInput): void {
@@ -857,9 +981,18 @@ export class WanGPProvider implements VideoGenerationProvider {
 
   #buildGenerationSource(internal: InternalJob, keyframes: StagedKeyframes): UnknownRecord {
     const defaults = internal.preset.model.defaultSettings ?? {};
+    const profileSettings = internal.preset.profile?.settings ?? {};
     const input = internal.input;
-    return {
+    const steps = input.steps ?? internal.preset.tier.steps;
+    const guidance = input.guidance ?? internal.preset.tier.guidance;
+    const cachePolicy = resolveWanGPCachePolicy({
+      model: internal.preset.modelCapability,
+      ...(internal.preset.profile === undefined ? {} : {profile: internal.preset.profile}),
+      steps,
+    });
+    return applyWanGPCachePolicy({
       ...defaults,
+      ...profileSettings,
       model_type: internal.preset.model.modelType,
       prompt: input.prompt,
       ...(input.negativePrompt === undefined ? {} : { negative_prompt: input.negativePrompt }),
@@ -869,13 +1002,15 @@ export class WanGPProvider implements VideoGenerationProvider {
       resolution: `${input.width}x${input.height}`,
       video_length: input.frameCount,
       force_fps: String(input.fps),
+      override_profile: 4,
+      override_attention: '',
       ...(input.seed === undefined ? {} : { seed: input.seed }),
-      ...(input.steps === undefined ? {} : { num_inference_steps: input.steps }),
-      ...(input.guidance === undefined ? {} : { guidance_scale: input.guidance }),
+      num_inference_steps: steps,
+      guidance_scale: guidance,
       ...(input.motionStrength === undefined
         ? {}
         : {motion_amplitude: 1 + input.motionStrength * 0.4}),
-    };
+    }, cachePolicy);
   }
 
   async #applySnapshot(internal: InternalJob, snapshot: WanGPJobSnapshot): Promise<void> {
@@ -883,6 +1018,7 @@ export class WanGPProvider implements VideoGenerationProvider {
       throw new VideoProviderError('PROTOCOL_ERROR', 'WanGP returned a snapshot for a different job.');
     }
     internal.backendJobId = snapshot.jobId;
+    internal.publicJob.metrics = internal.telemetry.ingest(snapshot.events, snapshot.done);
     if (snapshot.done) {
       const result = snapshot.result;
       if (result === undefined) {
@@ -1035,13 +1171,15 @@ export class WanGPProvider implements VideoGenerationProvider {
       outputPath?: string;
       previewPath?: string;
       seed?: number;
+      metrics?: VideoGenerationJob['metrics'];
       error?: VideoGenerationJob['error'] | undefined;
     },
   ): Promise<void> {
-    const { error: patchedError, ...patchWithoutError } = patch;
+    const { error: patchedError, metrics: patchedMetrics, ...patchWithoutOptional } = patch;
     const updated: VideoGenerationJob = {
       ...internal.publicJob,
-      ...patchWithoutError,
+      ...patchWithoutOptional,
+      ...(patchedMetrics === undefined ? {} : {metrics: patchedMetrics}),
       ...(patchedError === undefined ? {} : { error: patchedError }),
       updatedAt: new Date().toISOString(),
     };

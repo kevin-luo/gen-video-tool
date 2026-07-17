@@ -36,6 +36,10 @@ const browserFallback: DesktopApi = {
   selectProductionCandidate: desktopRequired,
   rejectProductionCandidate: desktopRequired,
   onProductionProgress: () => () => undefined,
+  getWanGPBenchmark: async (projectId) => ({projectId, entries: []}),
+  startWanGPBenchmark: desktopRequired,
+  cancelWanGPBenchmark: desktopRequired,
+  onWanGPBenchmarkProgress: () => () => undefined,
 };
 
 export const desktopService: DesktopApi = window.genVideoDesktop ?? browserFallback;

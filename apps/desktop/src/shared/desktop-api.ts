@@ -1,6 +1,11 @@
 import type {AssetPackInspection} from '@gen-video-tool/asset-pack';
 import type {ProductionRenderData} from '@gen-video-tool/remotion-engine';
-import type {ProductionPlan, ProductionState} from '@gen-video-tool/video-generation';
+import type {
+  ProductionPlan,
+  ProductionState,
+  VideoGenerationMetrics,
+  WanGPCapabilityCatalog,
+} from '@gen-video-tool/video-generation';
 
 export interface AssetPackSelection {
   handle: string;
@@ -79,6 +84,7 @@ export interface ProductionCandidateSnapshot {
     issues: string[];
   };
   humanDecision: ProductionHumanDecision;
+  metrics?: VideoGenerationMetrics;
   error?: {code: string; message: string};
 }
 
@@ -108,6 +114,7 @@ export interface ProductionProviderSnapshot {
   reason?: string;
   root?: string;
   pythonExecutable?: string;
+  catalog?: WanGPCapabilityCatalog;
   presets: Array<{
     id: string;
     label: string;
@@ -153,6 +160,9 @@ export interface ProductionSnapshot {
 export interface GenerateProductionShotRequest {
   projectId: string;
   shotId: string;
+  configurationId?: string;
+  modelRuntimeId?: string;
+  acceleratorProfileId?: string;
 }
 
 export interface ProductionProgress {
@@ -160,6 +170,42 @@ export interface ProductionProgress {
   shotId: string;
   candidateId?: string;
   snapshot: ProductionSnapshot;
+}
+
+export type WanGPBenchmarkTargetId = 'fun-inp-1.3b' | 'fastwan-5b' | 'enhanced-lightning-14b' | 'lightx2v-4step';
+
+export interface WanGPBenchmarkEntry {
+  targetId: WanGPBenchmarkTargetId;
+  label: string;
+  discovered: boolean;
+  installed: boolean;
+  status: 'not-run' | 'queued' | 'running' | 'normalizing' | 'complete' | 'failed' | 'cancelled';
+  modelRuntimeId?: string;
+  modelLabel?: string;
+  acceleratorProfileId?: string;
+  acceleratorProfileLabel?: string;
+  outputUrl?: string;
+  relativePath?: string;
+  metrics?: VideoGenerationMetrics;
+  error?: string;
+}
+
+export interface WanGPBenchmarkSnapshot {
+  projectId: string;
+  shotId?: string;
+  firstFramePath?: string;
+  runningTargetId?: WanGPBenchmarkTargetId;
+  entries: WanGPBenchmarkEntry[];
+  contactSheetUrl?: string;
+  contactSheetRelativePath?: string;
+  reportRelativePath?: string;
+  updatedAt?: string;
+}
+
+export interface StartWanGPBenchmarkRequest {
+  projectId: string;
+  shotId: string;
+  targetId: WanGPBenchmarkTargetId;
 }
 
 export interface DesktopApi {
@@ -183,6 +229,10 @@ export interface DesktopApi {
   selectProductionCandidate: (projectId: string, shotId: string, candidateId: string) => Promise<ProductionSnapshot>;
   rejectProductionCandidate: (projectId: string, shotId: string, candidateId: string) => Promise<ProductionSnapshot>;
   onProductionProgress: (listener: (progress: ProductionProgress) => void) => () => void;
+  getWanGPBenchmark: (projectId: string) => Promise<WanGPBenchmarkSnapshot>;
+  startWanGPBenchmark: (request: StartWanGPBenchmarkRequest) => Promise<WanGPBenchmarkSnapshot>;
+  cancelWanGPBenchmark: (projectId: string) => Promise<WanGPBenchmarkSnapshot>;
+  onWanGPBenchmarkProgress: (listener: (snapshot: WanGPBenchmarkSnapshot) => void) => () => void;
 }
 
 export const IPC_CHANNELS = {
@@ -205,4 +255,8 @@ export const IPC_CHANNELS = {
   selectProductionCandidate: 'production:select-candidate',
   rejectProductionCandidate: 'production:reject-candidate',
   productionProgress: 'production:progress',
+  getWanGPBenchmark: 'wangp-benchmark:snapshot',
+  startWanGPBenchmark: 'wangp-benchmark:start',
+  cancelWanGPBenchmark: 'wangp-benchmark:cancel',
+  wanGPBenchmarkProgress: 'wangp-benchmark:progress',
 } as const;

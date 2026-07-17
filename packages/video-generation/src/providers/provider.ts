@@ -42,6 +42,20 @@ export type VideoGenerationError = {
   details?: unknown;
 };
 
+export type VideoGenerationMetrics = {
+  providerStartupMs?: number;
+  modelLoadMs?: number;
+  textEncodeMs?: number;
+  denoiseMs?: number;
+  vaeDecodeMs?: number;
+  providerOutputMs?: number;
+  videoEncodeMs?: number;
+  generationTotalMs?: number;
+  totalMs?: number;
+  peakVramMb?: number;
+  peakRamMb?: number;
+};
+
 export type VideoGenerationJob = {
   id: string;
   providerId: VideoProviderId;
@@ -52,6 +66,7 @@ export type VideoGenerationJob = {
   outputPath?: string;
   previewPath?: string;
   seed?: number;
+  metrics?: VideoGenerationMetrics;
   error?: VideoGenerationError;
 };
 
@@ -131,6 +146,7 @@ export class VideoProviderError extends Error {
 export function cloneVideoGenerationJob(job: Readonly<VideoGenerationJob>): VideoGenerationJob {
   return {
     ...job,
+    ...(job.metrics === undefined ? {} : {metrics: {...job.metrics}}),
     ...(job.error === undefined ? {} : { error: { ...job.error } }),
   };
 }
