@@ -17,7 +17,7 @@ Gen Video Tool 是一套全新的、本地优先的视频生产桌面工具。Ch
 | F5-TTS | 真实本地 WAV 已验证 | 参考音频克隆、分段合成、合并、时长检查和外挂 SRT；v3 项目必须先选定视频才能生成旁白 |
 | Electron 工作流 | 已完成真实端到端验收 | 导入 → 生成 → 审片 → F5-TTS → 动态预览 → 导出；真实桌面导出得到 MP4、SRT 与 20 张 QA 抽帧 |
 | Web Skill → ZIP → 桌面 | 已完成真实回合验收 | 新样片目录经 Skill 校验零警告，确定性组装 ZIP，再由桌面同款导入器检查、原子导入并打开 `offline-only` v3 项目；源图和参考 WAV 哈希保持一致 |
-| 新 v3 样片 | 已完成并通过验收 | [`examples/morning-light-v3`](examples/morning-light-v3/README.md) 已完成双候选、人工拒绝/选择、F5-TTS、Remotion/FFmpeg 交付与抽帧检查 |
+| 新 v3 样片 | 已完成并通过验收 | [`examples/morning-light-v3`](examples/morning-light-v3/README.md) 与 23.57 秒的 [`examples/cat-noodle-stall-v3`](examples/cat-noodle-stall-v3/README.md) 均已完成双候选、人工拒绝/选择、F5-TTS、Remotion/FFmpeg 交付与抽帧检查 |
 
 ## 已验证样片
 
@@ -29,6 +29,15 @@ Gen Video Tool 是一套全新的、本地优先的视频生产桌面工具。Ch
 - 接受候选：seed `314159`，SHA-256 `f9a3d0ac9389cc049d6bb24ef744a2c4824f967022f51c2e7193cb52eb9ea30b`；
 - F5-TTS WAV：SHA-256 `033f1304c562a022cdc8f1fa212a90052a52663e497f206d898c64af3c270013`；
 - 最终 MP4：SHA-256 `1956bda567f171010446c5d161ffe2cfc64de046c1c3f48a3a557f20fbefc987`。
+
+### 23.57 秒实操样片：橘猫夜市炒粉
+
+- [查看最终 MP4](docs/media/cat-noodle-stall-v3.mp4)
+- [下载外挂 SRT](docs/media/cat-noodle-stall-v3.srt)
+- [查看 72 点 QA 联系表](docs/media/cat-noodle-stall-v3-contact-sheet.jpg)
+- 七个连续镜头：开摊、热锅、倒粉、翻炒、淋酱、颠锅、出餐；每个镜头由本地 WanGP 生成两枚候选，人工按角色完整性、道具接触和物理落点选片；
+- 成片：23.5667 秒、1080×1920、30 fps、精确 707 帧、H.264/yuv420p、AAC 48 kHz 单声道；F5-TTS 旁白，无 BGM、无烧录字幕；
+- 最终 MP4：SHA-256 `2fcbbb0ec9d1eb9eb9ada4520ab13af1547862137b3ea58d0deff4f27d3db707`。
 
 仓库提交便携源资产包和经过验收的轻量演示媒体，不提交本机模型缓存、原始候选或工作状态。完整候选、人工审片记录、F5 缓存和交付副本保留在桌面应用数据目录。
 

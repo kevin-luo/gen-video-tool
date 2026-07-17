@@ -1,0 +1,862 @@
+{
+  "schemaVersion": 3,
+  "projectId": "cat-noodle-stall-v3",
+  "metadata": {
+    "title": "橘猫夜市炒粉",
+    "locale": "zh-CN"
+  },
+  "networkPolicy": "offline-only",
+  "requiredCapabilities": [
+    "local-f5-tts",
+    "local-i2v",
+    "remotion-render",
+    "ffmpeg",
+    "sidecar-srt"
+  ],
+  "delivery": {
+    "raster": {
+      "width": 1080,
+      "height": 1920,
+      "pixelAspectRatio": 1
+    },
+    "timeline": {
+      "fps": 30,
+      "durationFrames": 707
+    },
+    "video": {
+      "path": "generated/final/cat-noodle-stall.mp4",
+      "codec": "h264",
+      "pixelFormat": "yuv420p"
+    },
+    "audio": {
+      "path": "generated/audio/narration.wav",
+      "sourceFormat": "wav",
+      "muxCodec": "aac",
+      "muxSampleRate": 48000
+    },
+    "subtitles": {
+      "path": "generated/final/cat-noodle-stall.srt",
+      "format": "srt",
+      "burnIn": false
+    },
+    "bgm": null
+  },
+  "narration": {
+    "engine": "f5-tts-local",
+    "language": "zh-CN",
+    "referenceAudioPath": "assets/voices/narrator.wav",
+    "referenceText": "先说答案：车头撞得越“会坏”，人反而越有机会少受伤，因为溃缩区拿自己的变形，替乘员争取减速时间。",
+    "speed": 1.1,
+    "segments": [
+      {
+        "segmentId": "cat-line-01",
+        "shotId": "open-stall",
+        "text": "夜市刚亮灯，橘猫的炒粉摊开张了。",
+        "outputPath": "generated/audio/cat-line-01.wav"
+      },
+      {
+        "segmentId": "cat-line-02",
+        "shotId": "heat-wok",
+        "text": "客人说少辣，它先把铁锅烧到冒烟。",
+        "outputPath": "generated/audio/cat-line-02.wav"
+      },
+      {
+        "segmentId": "cat-line-03",
+        "shotId": "add-noodles",
+        "text": "米粉一落锅，它左爪倒粉，右爪稳住锅柄。",
+        "outputPath": "generated/audio/cat-line-03.wav"
+      },
+      {
+        "segmentId": "cat-line-04",
+        "shotId": "stir-fry",
+        "text": "豆芽鸡蛋一翻，香气飘过半条街。",
+        "outputPath": "generated/audio/cat-line-04.wav"
+      },
+      {
+        "segmentId": "cat-line-05",
+        "shotId": "add-sauce",
+        "text": "酱油沿锅边一淋，火苗呼地窜起来。",
+        "outputPath": "generated/audio/cat-line-05.wav"
+      },
+      {
+        "segmentId": "cat-line-06",
+        "shotId": "toss-noodles",
+        "text": "锅一颠，炒粉划道弧线，稳稳落回去。",
+        "outputPath": "generated/audio/cat-line-06.wav"
+      },
+      {
+        "segmentId": "cat-line-07",
+        "shotId": "serve-customer",
+        "text": "热腾腾的一盘递出去，客人的尾巴先摇了。",
+        "outputPath": "generated/audio/cat-line-07.wav"
+      }
+    ],
+    "mergedAudioPath": "generated/audio/narration.wav"
+  },
+  "shots": [
+    {
+      "shotId": "open-stall",
+      "kind": "generated-performance",
+      "deliveryTimeline": {
+        "startFrame": 0,
+        "durationFrames": 101
+      },
+      "generation": {
+        "engine": "wangp-local-i2v",
+        "conditioning": {
+          "mode": "start-only",
+          "startKeyframePath": "assets/shots/shot-01/performance-start.png"
+        },
+        "preset": {
+          "id": "local-i2v-fast-portrait",
+          "quality": "preview",
+          "conditioning": "start-only",
+          "motionStrength": 0.78
+        },
+        "raster": {
+          "width": 480,
+          "height": 832
+        },
+        "timeline": {
+          "fps": 24,
+          "frameCount": 81
+        },
+        "conformToDelivery": {
+          "spatialFit": "cover",
+          "focalPoint": {"x": 0.5, "y": 0.52},
+          "temporalFit": "preserve-duration"
+        },
+        "candidateSeeds": [700101, 700102]
+      },
+      "hybridMotion": {
+        "actor": {
+          "id": "vendor-cat",
+          "supportingActorIds": ["customer-cat"],
+          "action": "lower the wok lid safely, wave once to the customer area, and settle behind the cart",
+          "prompt": "Locked camera. The same orange tabby vendor cat stands behind the same cart. It lowers the metal wok lid onto the left counter with one paw, gives one small welcoming wave toward the customer area with the other paw, keeps both feet planted, and settles smiling. The lid stays supported after placement. The cart, bulbs, wok and dusk street remain rigid and unchanged.",
+          "negativePrompt": "camera motion, scene cut, text, subtitles, logo, duplicate cat, extra limbs, fused paws, changing clothes, changing fur pattern, missing tail, floating lid, lid passing through counter, sliding feet, morphing cart, background breathing, fire on fur",
+          "generatedCamera": "locked",
+          "excludedCausalPropIds": []
+        },
+        "world": {
+          "subjectId": "vendor-cat",
+          "targetId": "customer-zone",
+          "generatedObjectIds": ["wok-lid"],
+          "supportSurfaceId": "stone-pavement",
+          "actionAxis": {
+            "from": {"x": 0.5, "y": 0.53},
+            "to": {"x": 0.62, "y": 0.72}
+          },
+          "milestones": [
+            {"id": "setup", "kind": "setup", "frame": 0},
+            {"id": "hold-lid", "kind": "contact", "frame": 1},
+            {"id": "lower-lid", "kind": "approach", "frame": 18},
+            {"id": "wave", "kind": "follow-through", "frame": 58},
+            {"id": "settle", "kind": "settle", "frame": 88},
+            {"id": "end", "kind": "end", "frame": 100}
+          ],
+          "constraints": {
+            "facing": [
+              {
+                "id": "face-customer-zone",
+                "actorId": "vendor-cat",
+                "towardTargetId": "customer-zone",
+                "bodyAxis": "torso",
+                "fromMilestoneId": "setup",
+                "throughMilestoneId": "end",
+                "maxDeviationDegrees": 35
+              }
+            ],
+            "support": [
+              {
+                "id": "vendor-feet-grounded",
+                "actorId": "vendor-cat",
+                "bodyPart": "left-foot",
+                "surfaceId": "stone-pavement",
+                "mode": "planted",
+                "fromMilestoneId": "setup",
+                "throughMilestoneId": "end",
+                "maxSlipPixels": 10
+              }
+            ],
+            "contact": [
+              {
+                "id": "vendor-holds-lid",
+                "actorId": "vendor-cat",
+                "bodyPart": "left-hand",
+                "target": {"owner": "generated-world", "objectId": "wok-lid"},
+                "milestoneId": "hold-lid",
+                "kind": "grasp",
+                "toleranceFrames": 1
+              }
+            ]
+          }
+        },
+        "deterministicProps": [],
+        "editorialCamera": {
+          "owner": "editorial-camera",
+          "operation": "push",
+          "strength": 0.06
+        }
+      },
+      "occlusion": {"mode": "none", "requirement": "none"}
+    },
+    {
+      "shotId": "heat-wok",
+      "kind": "generated-performance",
+      "deliveryTimeline": {
+        "startFrame": 101,
+        "durationFrames": 101
+      },
+      "generation": {
+        "engine": "wangp-local-i2v",
+        "conditioning": {
+          "mode": "start-only",
+          "startKeyframePath": "assets/shots/shot-02/performance-start.png"
+        },
+        "preset": {
+          "id": "local-i2v-fast-portrait",
+          "quality": "preview",
+          "conditioning": "start-only",
+          "motionStrength": 0.72
+        },
+        "raster": {"width": 480, "height": 832},
+        "timeline": {"fps": 24, "frameCount": 81},
+        "conformToDelivery": {
+          "spatialFit": "cover",
+          "focalPoint": {"x": 0.5, "y": 0.54},
+          "temporalFit": "preserve-duration"
+        },
+        "candidateSeeds": [700201, 700202]
+      },
+      "hybridMotion": {
+        "actor": {
+          "id": "vendor-cat",
+          "supportingActorIds": ["customer-cat"],
+          "action": "turn the burner knob once while holding the wok handle, then watch the wok heat",
+          "prompt": "Locked camera. The same vendor cat leans slightly forward, turns the real front burner knob once with the left paw, keeps the right paw gripping the wooden wok handle, then returns the left paw clear of the heat and watches gentle steam rise. Both feet stay planted. The small customer kitten remains still in the lower-right foreground. No flare and no scene change.",
+          "negativePrompt": "camera motion, scene cut, duplicate cat, extra limbs, fused paw and knob, paw passing through stove, changing apron, changing fur, sliding feet, floating wok, moving customer, large fire, fire touching fur, text, subtitles, logo, watermark",
+          "generatedCamera": "locked",
+          "excludedCausalPropIds": []
+        },
+        "world": {
+          "subjectId": "vendor-cat",
+          "targetId": "stove",
+          "generatedObjectIds": ["burner-knob", "wok-handle"],
+          "supportSurfaceId": "stone-pavement",
+          "actionAxis": {
+            "from": {"x": 0.48, "y": 0.54},
+            "to": {"x": 0.36, "y": 0.68}
+          },
+          "milestones": [
+            {"id": "setup", "kind": "setup", "frame": 0},
+            {"id": "touch-controls", "kind": "contact", "frame": 1},
+            {"id": "turn-knob", "kind": "approach", "frame": 18},
+            {"id": "wok-heats", "kind": "follow-through", "frame": 68},
+            {"id": "settle", "kind": "settle", "frame": 90},
+            {"id": "end", "kind": "end", "frame": 100}
+          ],
+          "constraints": {
+            "facing": [
+              {
+                "id": "face-stove",
+                "actorId": "vendor-cat",
+                "towardTargetId": "stove",
+                "bodyAxis": "torso",
+                "fromMilestoneId": "setup",
+                "throughMilestoneId": "end",
+                "maxDeviationDegrees": 30
+              }
+            ],
+            "support": [
+              {
+                "id": "vendor-left-foot-grounded",
+                "actorId": "vendor-cat",
+                "bodyPart": "left-foot",
+                "surfaceId": "stone-pavement",
+                "mode": "planted",
+                "fromMilestoneId": "setup",
+                "throughMilestoneId": "end",
+                "maxSlipPixels": 8
+              }
+            ],
+            "contact": [
+              {
+                "id": "left-paw-turns-knob",
+                "actorId": "vendor-cat",
+                "bodyPart": "left-hand",
+                "target": {"owner": "generated-world", "objectId": "burner-knob"},
+                "milestoneId": "touch-controls",
+                "kind": "touch",
+                "toleranceFrames": 1
+              },
+              {
+                "id": "right-paw-holds-wok",
+                "actorId": "vendor-cat",
+                "bodyPart": "right-hand",
+                "target": {"owner": "generated-world", "objectId": "wok-handle"},
+                "milestoneId": "touch-controls",
+                "kind": "grasp",
+                "toleranceFrames": 1
+              }
+            ]
+          }
+        },
+        "deterministicProps": [],
+        "editorialCamera": {"owner": "editorial-camera", "operation": "locked", "strength": 0}
+      },
+      "occlusion": {"mode": "none", "requirement": "none"}
+    },
+    {
+      "shotId": "add-noodles",
+      "kind": "generated-performance",
+      "deliveryTimeline": {
+        "startFrame": 202,
+        "durationFrames": 101
+      },
+      "generation": {
+        "engine": "wangp-local-i2v",
+        "conditioning": {
+          "mode": "start-only",
+          "startKeyframePath": "assets/shots/shot-03/performance-start.png"
+        },
+        "preset": {
+          "id": "local-i2v-fast-portrait",
+          "quality": "preview",
+          "conditioning": "start-only",
+          "motionStrength": 0.86
+        },
+        "raster": {"width": 480, "height": 832},
+        "timeline": {"fps": 24, "frameCount": 81},
+        "conformToDelivery": {
+          "spatialFit": "cover",
+          "focalPoint": {"x": 0.5, "y": 0.53},
+          "temporalFit": "preserve-duration"
+        },
+        "candidateSeeds": [700301, 700302]
+      },
+      "hybridMotion": {
+        "actor": {
+          "id": "vendor-cat",
+          "supportingActorIds": [],
+          "action": "continue the visible rice-noodle cascade from the supported bowl into the wok while stabilizing its handle",
+          "prompt": "Locked camera. Continue the exact mid-pour already visible in the first frame: the thick rice-noodle stream keeps moving downward from the small stainless bowl, crosses the bowl rim, and lands in the centre of the black wok under gravity. The left paw remains wrapped around the same small bowl; the right paw remains wrapped around the existing wooden wok handle outside the pan. Preserve the bowl, wok and handle as three separate rigid objects with unchanged shapes. The stream tapers as the bowl empties, then the cat lowers the same empty bowl toward the left counter. Both feet remain planted. No customer or other actor enters this shot.",
+          "negativePrompt": "camera motion, scene cut, customer, other actor, foreground body, foreground paw, human hand, person, duplicate bowl, bowl becoming wok, wok becoming bowl, handle becoming board, wooden board, changing utensil, floating noodles, noodles moving upward, frozen noodle stream, spilled noodles outside wok, fused paw and bowl, paw inside wok, missing paw, extra limbs, changing cat identity, sliding feet, floating wok, text, logo, watermark, subtitles",
+          "generatedCamera": "locked",
+          "excludedCausalPropIds": []
+        },
+        "world": {
+          "subjectId": "vendor-cat",
+          "targetId": "wok",
+          "generatedObjectIds": ["noodle-bowl", "wok-handle", "rice-noodles"],
+          "supportSurfaceId": "stone-pavement",
+          "actionAxis": {
+            "from": {"x": 0.36, "y": 0.5},
+            "to": {"x": 0.5, "y": 0.62}
+          },
+          "milestones": [
+            {"id": "setup", "kind": "setup", "frame": 0},
+            {"id": "grip-bowl-and-wok", "kind": "contact", "frame": 1},
+            {"id": "tilt-bowl", "kind": "anticipation", "frame": 18},
+            {"id": "noodles-fall", "kind": "follow-through", "frame": 62},
+            {"id": "bowl-down", "kind": "settle", "frame": 90},
+            {"id": "end", "kind": "end", "frame": 100}
+          ],
+          "constraints": {
+            "facing": [
+              {
+                "id": "face-wok",
+                "actorId": "vendor-cat",
+                "towardTargetId": "wok",
+                "bodyAxis": "torso",
+                "fromMilestoneId": "setup",
+                "throughMilestoneId": "end",
+                "maxDeviationDegrees": 25
+              }
+            ],
+            "support": [
+              {
+                "id": "vendor-feet-stay-grounded",
+                "actorId": "vendor-cat",
+                "bodyPart": "right-foot",
+                "surfaceId": "stone-pavement",
+                "mode": "planted",
+                "fromMilestoneId": "setup",
+                "throughMilestoneId": "end",
+                "maxSlipPixels": 8
+              }
+            ],
+            "contact": [
+              {
+                "id": "left-paw-grips-bowl",
+                "actorId": "vendor-cat",
+                "bodyPart": "left-hand",
+                "target": {"owner": "generated-world", "objectId": "noodle-bowl"},
+                "milestoneId": "grip-bowl-and-wok",
+                "kind": "grasp",
+                "toleranceFrames": 1
+              },
+              {
+                "id": "right-paw-grips-handle",
+                "actorId": "vendor-cat",
+                "bodyPart": "right-hand",
+                "target": {"owner": "generated-world", "objectId": "wok-handle"},
+                "milestoneId": "grip-bowl-and-wok",
+                "kind": "grasp",
+                "toleranceFrames": 1
+              }
+            ]
+          }
+        },
+        "deterministicProps": [],
+        "editorialCamera": {"owner": "editorial-camera", "operation": "push", "strength": 0.07}
+      },
+      "occlusion": {"mode": "none", "requirement": "none"}
+    },
+    {
+      "shotId": "stir-fry",
+      "kind": "generated-performance",
+      "deliveryTimeline": {
+        "startFrame": 303,
+        "durationFrames": 101
+      },
+      "generation": {
+        "engine": "wangp-local-i2v",
+        "conditioning": {
+          "mode": "start-only",
+          "startKeyframePath": "assets/shots/shot-04/performance-start.png"
+        },
+        "preset": {
+          "id": "local-i2v-fast-portrait",
+          "quality": "preview",
+          "conditioning": "start-only",
+          "motionStrength": 0.9
+        },
+        "raster": {"width": 480, "height": 832},
+        "timeline": {"fps": 24, "frameCount": 81},
+        "conformToDelivery": {
+          "spatialFit": "cover",
+          "focalPoint": {"x": 0.5, "y": 0.53},
+          "temporalFit": "preserve-duration"
+        },
+        "candidateSeeds": [700401, 700402]
+      },
+      "hybridMotion": {
+        "actor": {
+          "id": "vendor-cat",
+          "supportingActorIds": ["customer-cat"],
+          "action": "stir the noodles with the spatula while holding the wok steady, then settle",
+          "prompt": "Locked camera. The same vendor cat performs one continuous stir-fry cycle. The left paw pushes the metal spatula through the noodles in smooth circles while the right paw holds the wok handle steady. Noodles, bean sprouts and egg roll inside the wok but do not leave it. The cat keeps both feet planted and makes a small believable torso weight shift. Steam rises gently and the customer remains still.",
+          "negativePrompt": "camera motion, scene cut, airborne noodles, spilled food, duplicate spatula, fused paws, extra arms, changing cat face, changing clothes, sliding feet, floating wok, morphing cart, large fire, customer movement, text, subtitles, logo, watermark",
+          "generatedCamera": "locked",
+          "excludedCausalPropIds": []
+        },
+        "world": {
+          "subjectId": "vendor-cat",
+          "targetId": "wok",
+          "generatedObjectIds": ["spatula", "wok-handle", "wok-contents"],
+          "supportSurfaceId": "stone-pavement",
+          "actionAxis": {
+            "from": {"x": 0.46, "y": 0.58},
+            "to": {"x": 0.54, "y": 0.64}
+          },
+          "milestones": [
+            {"id": "setup", "kind": "setup", "frame": 0},
+            {"id": "grip-tools", "kind": "contact", "frame": 1},
+            {"id": "stir-start", "kind": "anticipation", "frame": 12},
+            {"id": "stir-through", "kind": "follow-through", "frame": 72},
+            {"id": "settle", "kind": "settle", "frame": 90},
+            {"id": "end", "kind": "end", "frame": 100}
+          ],
+          "constraints": {
+            "facing": [
+              {
+                "id": "face-wok",
+                "actorId": "vendor-cat",
+                "towardTargetId": "wok",
+                "bodyAxis": "head",
+                "fromMilestoneId": "setup",
+                "throughMilestoneId": "end",
+                "maxDeviationDegrees": 30
+              }
+            ],
+            "support": [
+              {
+                "id": "vendor-left-foot-planted",
+                "actorId": "vendor-cat",
+                "bodyPart": "left-foot",
+                "surfaceId": "stone-pavement",
+                "mode": "planted",
+                "fromMilestoneId": "setup",
+                "throughMilestoneId": "end",
+                "maxSlipPixels": 10
+              }
+            ],
+            "contact": [
+              {
+                "id": "left-paw-grips-spatula",
+                "actorId": "vendor-cat",
+                "bodyPart": "left-hand",
+                "target": {"owner": "generated-world", "objectId": "spatula"},
+                "milestoneId": "grip-tools",
+                "kind": "grasp",
+                "toleranceFrames": 1
+              },
+              {
+                "id": "right-paw-grips-wok-handle",
+                "actorId": "vendor-cat",
+                "bodyPart": "right-hand",
+                "target": {"owner": "generated-world", "objectId": "wok-handle"},
+                "milestoneId": "grip-tools",
+                "kind": "grasp",
+                "toleranceFrames": 1
+              }
+            ]
+          }
+        },
+        "deterministicProps": [],
+        "editorialCamera": {"owner": "editorial-camera", "operation": "pan-right", "strength": 0.04}
+      },
+      "occlusion": {"mode": "none", "requirement": "none"}
+    },
+    {
+      "shotId": "add-sauce",
+      "kind": "generated-performance",
+      "deliveryTimeline": {
+        "startFrame": 404,
+        "durationFrames": 101
+      },
+      "generation": {
+        "engine": "wangp-local-i2v",
+        "conditioning": {
+          "mode": "start-only",
+          "startKeyframePath": "assets/shots/shot-05/performance-start.png"
+        },
+        "preset": {
+          "id": "local-i2v-fast-portrait",
+          "quality": "preview",
+          "conditioning": "start-only",
+          "motionStrength": 0.88
+        },
+        "raster": {"width": 480, "height": 832},
+        "timeline": {"fps": 24, "frameCount": 81},
+        "conformToDelivery": {
+          "spatialFit": "cover",
+          "focalPoint": {"x": 0.5, "y": 0.53},
+          "temporalFit": "preserve-duration"
+        },
+        "candidateSeeds": [700501, 700502]
+      },
+      "hybridMotion": {
+        "actor": {
+          "id": "vendor-cat",
+          "supportingActorIds": [],
+          "action": "continue the visible thin soy-sauce stream around the hot wok edge, allow one brief safe flare, and set the same small bottle down",
+          "prompt": "Locked camera. Continue the exact mid-pour visible in the first frame. The same small narrow-necked black ceramic bottle stays rigid and paw-sized in the left paw, close above the screen-left inner rim. Its thin dark-brown stream keeps falling straight downward from the same spout onto the hot metal edge, then tapers to a stop. The right paw remains wrapped around the existing wooden wok handle outside the pan. A brief small orange flare may rise only above the wok after contact, then immediately shrink. The cat lowers the same small bottle toward the left counter. No customer or other actor enters this shot; both feet remain planted and fur never contacts fire.",
+          "negativePrompt": "camera motion, scene cut, giant bottle, growing bottle, white jug, bucket, human hands, other paws, customer, duplicate bottle, changing bottle shape, fire before sauce contact, uncontrolled inferno, fire on fur, floating bottle, sauce moving upward, frozen sauce stream, fused paw, paw inside wok, extra limbs, changing cat identity, sliding feet, floating wok, text, label, subtitles, logo, watermark",
+          "generatedCamera": "locked",
+          "excludedCausalPropIds": []
+        },
+        "world": {
+          "subjectId": "vendor-cat",
+          "targetId": "wok",
+          "generatedObjectIds": ["sauce-bottle", "wok-handle", "wok-contents"],
+          "supportSurfaceId": "stone-pavement",
+          "actionAxis": {
+            "from": {"x": 0.36, "y": 0.5},
+            "to": {"x": 0.5, "y": 0.62}
+          },
+          "milestones": [
+            {"id": "setup", "kind": "setup", "frame": 0},
+            {"id": "grip-bottle-and-wok", "kind": "contact", "frame": 1},
+            {"id": "pour-start", "kind": "anticipation", "frame": 16},
+            {"id": "brief-flare", "kind": "follow-through", "frame": 58},
+            {"id": "bottle-down", "kind": "settle", "frame": 88},
+            {"id": "end", "kind": "end", "frame": 100}
+          ],
+          "constraints": {
+            "facing": [
+              {
+                "id": "face-wok",
+                "actorId": "vendor-cat",
+                "towardTargetId": "wok",
+                "bodyAxis": "head",
+                "fromMilestoneId": "setup",
+                "throughMilestoneId": "end",
+                "maxDeviationDegrees": 25
+              }
+            ],
+            "support": [
+              {
+                "id": "vendor-right-foot-planted",
+                "actorId": "vendor-cat",
+                "bodyPart": "right-foot",
+                "surfaceId": "stone-pavement",
+                "mode": "planted",
+                "fromMilestoneId": "setup",
+                "throughMilestoneId": "end",
+                "maxSlipPixels": 8
+              }
+            ],
+            "contact": [
+              {
+                "id": "left-paw-grips-sauce",
+                "actorId": "vendor-cat",
+                "bodyPart": "left-hand",
+                "target": {"owner": "generated-world", "objectId": "sauce-bottle"},
+                "milestoneId": "grip-bottle-and-wok",
+                "kind": "grasp",
+                "toleranceFrames": 1
+              },
+              {
+                "id": "right-paw-grips-handle",
+                "actorId": "vendor-cat",
+                "bodyPart": "right-hand",
+                "target": {"owner": "generated-world", "objectId": "wok-handle"},
+                "milestoneId": "grip-bottle-and-wok",
+                "kind": "grasp",
+                "toleranceFrames": 1
+              }
+            ]
+          }
+        },
+        "deterministicProps": [],
+        "editorialCamera": {"owner": "editorial-camera", "operation": "push", "strength": 0.08}
+      },
+      "occlusion": {"mode": "none", "requirement": "none"}
+    },
+    {
+      "shotId": "toss-noodles",
+      "kind": "generated-performance",
+      "deliveryTimeline": {
+        "startFrame": 505,
+        "durationFrames": 101
+      },
+      "generation": {
+        "engine": "wangp-local-i2v",
+        "conditioning": {
+          "mode": "start-only",
+          "startKeyframePath": "assets/shots/shot-06/performance-start.png"
+        },
+        "preset": {
+          "id": "local-i2v-fast-portrait",
+          "quality": "preview",
+          "conditioning": "start-only",
+          "motionStrength": 0.86
+        },
+        "raster": {"width": 480, "height": 832},
+        "timeline": {"fps": 24, "frameCount": 81},
+        "conformToDelivery": {
+          "spatialFit": "cover",
+          "focalPoint": {"x": 0.5, "y": 0.5},
+          "temporalFit": "preserve-duration"
+        },
+        "candidateSeeds": [700601, 700602]
+      },
+      "hybridMotion": {
+        "actor": {
+          "id": "vendor-cat",
+          "supportingActorIds": [],
+          "action": "continue the visible low noodle arc downward, catch every strand in the same wok, and settle it on the burner",
+          "prompt": "Locked camera. Continue the exact mid-toss visible in the first frame; do not start a new toss. The modest loose arc of separated fried rice noodles and bean sprouts is already airborne below the cat's chest. It immediately curves downward under gravity and every strand lands back inside the center of the same black wok. Both front paws remain separated along the same single wooden wok handle on screen right, outside the hot pan, while both hind paws stay planted. The cat absorbs the catch, lowers the same wok squarely onto the burner, and settles. No utensil and no other actor enters this shot; the cart stays rigid.",
+          "negativePrompt": "camera motion, scene cut, new toss, multiple tosses, food ball, giant food mass, food waterfall, food obscuring face, noodles flying away, spilled food, floating food, upward food after first frame, impossible gravity, duplicated wok, changing wok shape, spatula, utensil, customer, person, human body, fused paw and handle, extra limbs, sliding feet, falling cat, changing identity, morphing stall, fire on fur, text, logo, watermark, subtitles",
+          "generatedCamera": "locked",
+          "excludedCausalPropIds": []
+        },
+        "world": {
+          "subjectId": "vendor-cat",
+          "targetId": "wok",
+          "generatedObjectIds": ["wok-handle", "fried-noodles"],
+          "supportSurfaceId": "stone-pavement",
+          "actionAxis": {
+            "from": {"x": 0.5, "y": 0.64},
+            "to": {"x": 0.5, "y": 0.38}
+          },
+          "milestones": [
+            {"id": "setup", "kind": "setup", "frame": 0},
+            {"id": "grip-wok", "kind": "contact", "frame": 1},
+            {"id": "load-legs", "kind": "plant", "frame": 22},
+            {"id": "toss-arc", "kind": "follow-through", "frame": 58},
+            {"id": "catch-and-settle", "kind": "settle", "frame": 84},
+            {"id": "end", "kind": "end", "frame": 100}
+          ],
+          "constraints": {
+            "facing": [
+              {
+                "id": "face-wok",
+                "actorId": "vendor-cat",
+                "towardTargetId": "wok",
+                "bodyAxis": "torso",
+                "fromMilestoneId": "setup",
+                "throughMilestoneId": "end",
+                "maxDeviationDegrees": 30
+              }
+            ],
+            "support": [
+              {
+                "id": "both-feet-load-on-pavement",
+                "actorId": "vendor-cat",
+                "bodyPart": "left-foot",
+                "surfaceId": "stone-pavement",
+                "mode": "planted",
+                "fromMilestoneId": "setup",
+                "throughMilestoneId": "end",
+                "maxSlipPixels": 12
+              },
+              {
+                "id": "right-foot-loads-on-pavement",
+                "actorId": "vendor-cat",
+                "bodyPart": "right-foot",
+                "surfaceId": "stone-pavement",
+                "mode": "planted",
+                "fromMilestoneId": "setup",
+                "throughMilestoneId": "end",
+                "maxSlipPixels": 12
+              }
+            ],
+            "contact": [
+              {
+                "id": "right-paw-grips-wok",
+                "actorId": "vendor-cat",
+                "bodyPart": "right-hand",
+                "target": {"owner": "generated-world", "objectId": "wok-handle"},
+                "milestoneId": "grip-wok",
+                "kind": "grasp",
+                "toleranceFrames": 1
+              },
+              {
+                "id": "left-paw-grips-wok",
+                "actorId": "vendor-cat",
+                "bodyPart": "left-hand",
+                "target": {"owner": "generated-world", "objectId": "wok-handle"},
+                "milestoneId": "grip-wok",
+                "kind": "grasp",
+                "toleranceFrames": 1
+              }
+            ]
+          }
+        },
+        "deterministicProps": [],
+        "editorialCamera": {"owner": "editorial-camera", "operation": "pull", "strength": 0.05}
+      },
+      "occlusion": {"mode": "none", "requirement": "none"}
+    },
+    {
+      "shotId": "serve-customer",
+      "kind": "generated-performance",
+      "deliveryTimeline": {
+        "startFrame": 606,
+        "durationFrames": 101
+      },
+      "generation": {
+        "engine": "wangp-local-i2v",
+        "conditioning": {
+          "mode": "start-only",
+          "startKeyframePath": "assets/shots/shot-07/performance-start.png"
+        },
+        "preset": {
+          "id": "local-i2v-fast-portrait",
+          "quality": "preview",
+          "conditioning": "start-only",
+          "motionStrength": 0.76
+        },
+        "raster": {"width": 480, "height": 832},
+        "timeline": {"fps": 24, "frameCount": 81},
+        "conformToDelivery": {
+          "spatialFit": "cover",
+          "focalPoint": {"x": 0.52, "y": 0.55},
+          "temporalFit": "preserve-duration"
+        },
+        "candidateSeeds": [700701, 700702]
+      },
+      "hybridMotion": {
+        "actor": {
+          "id": "vendor-cat",
+          "supportingActorIds": ["customer-cat"],
+          "action": "extend the hot plate to the customer, transfer its weight safely, then smile as the customer tail wags",
+          "prompt": "Locked camera. The same vendor cat supports the steaming plate with both paws and extends it a short distance toward the same customer kitten. The customer reaches with both paws, takes the plate weight gradually, and then wags the tail happily while standing on the pavement. The vendor releases only after the customer's paws support the plate, draws both paws back, and smiles. The plate stays level, noodles stay on the plate, and the wok remains on the burner.",
+          "negativePrompt": "camera motion, scene cut, dropped plate, floating plate, spilled noodles, duplicate plate, duplicate customer, extra limbs, fused paws, plate passing through counter, vendor releasing too early, changing cat identity, sliding feet, morphing cart, text, logo, watermark, subtitles",
+          "generatedCamera": "locked",
+          "excludedCausalPropIds": []
+        },
+        "world": {
+          "subjectId": "vendor-cat",
+          "targetId": "customer-cat",
+          "generatedObjectIds": ["serving-plate"],
+          "supportSurfaceId": "stone-pavement",
+          "actionAxis": {
+            "from": {"x": 0.5, "y": 0.56},
+            "to": {"x": 0.62, "y": 0.72}
+          },
+          "milestones": [
+            {"id": "setup", "kind": "setup", "frame": 0},
+            {"id": "vendor-holds-plate", "kind": "contact", "frame": 1},
+            {"id": "extend-plate", "kind": "approach", "frame": 24},
+            {"id": "customer-takes-plate", "kind": "contact", "frame": 58},
+            {"id": "tail-wags", "kind": "follow-through", "frame": 78},
+            {"id": "settle", "kind": "settle", "frame": 92},
+            {"id": "end", "kind": "end", "frame": 100}
+          ],
+          "constraints": {
+            "facing": [
+              {
+                "id": "vendor-faces-customer",
+                "actorId": "vendor-cat",
+                "towardTargetId": "customer-cat",
+                "bodyAxis": "torso",
+                "fromMilestoneId": "setup",
+                "throughMilestoneId": "end",
+                "maxDeviationDegrees": 35
+              }
+            ],
+            "support": [
+              {
+                "id": "vendor-feet-supported",
+                "actorId": "vendor-cat",
+                "bodyPart": "left-foot",
+                "surfaceId": "stone-pavement",
+                "mode": "planted",
+                "fromMilestoneId": "setup",
+                "throughMilestoneId": "end",
+                "maxSlipPixels": 10
+              },
+              {
+                "id": "customer-feet-supported",
+                "actorId": "customer-cat",
+                "bodyPart": "right-foot",
+                "surfaceId": "stone-pavement",
+                "mode": "planted",
+                "fromMilestoneId": "setup",
+                "throughMilestoneId": "end",
+                "maxSlipPixels": 12
+              }
+            ],
+            "contact": [
+              {
+                "id": "vendor-supports-plate",
+                "actorId": "vendor-cat",
+                "bodyPart": "left-hand",
+                "target": {"owner": "generated-world", "objectId": "serving-plate"},
+                "milestoneId": "vendor-holds-plate",
+                "kind": "grasp",
+                "toleranceFrames": 1
+              },
+              {
+                "id": "customer-takes-plate",
+                "actorId": "customer-cat",
+                "bodyPart": "right-hand",
+                "target": {"owner": "generated-world", "objectId": "serving-plate"},
+                "milestoneId": "customer-takes-plate",
+                "kind": "grasp",
+                "toleranceFrames": 2
+              }
+            ]
+          }
+        },
+        "deterministicProps": [],
+        "editorialCamera": {"owner": "editorial-camera", "operation": "push", "strength": 0.09}
+      },
+      "occlusion": {"mode": "none", "requirement": "none"}
+    }
+  ]
+}

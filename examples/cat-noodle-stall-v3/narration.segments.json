@@ -1,0 +1,53 @@
+{
+  "segments": [
+    {
+      "segmentId": "cat-line-01",
+      "shotId": "open-stall",
+      "text": "夜市刚亮灯，橘猫的炒粉摊开张了。",
+      "startSeconds": 0,
+      "estimatedDurationSeconds": 3.2
+    },
+    {
+      "segmentId": "cat-line-02",
+      "shotId": "heat-wok",
+      "text": "客人说少辣，它先把铁锅烧到冒烟。",
+      "startSeconds": 3.2,
+      "estimatedDurationSeconds": 3.2
+    },
+    {
+      "segmentId": "cat-line-03",
+      "shotId": "add-noodles",
+      "text": "米粉一落锅，它左爪倒粉，右爪稳住锅柄。",
+      "startSeconds": 6.4,
+      "estimatedDurationSeconds": 3.3
+    },
+    {
+      "segmentId": "cat-line-04",
+      "shotId": "stir-fry",
+      "text": "豆芽鸡蛋一翻，香气飘过半条街。",
+      "startSeconds": 9.7,
+      "estimatedDurationSeconds": 3.3
+    },
+    {
+      "segmentId": "cat-line-05",
+      "shotId": "add-sauce",
+      "text": "酱油沿锅边一淋，火苗呼地窜起来。",
+      "startSeconds": 13,
+      "estimatedDurationSeconds": 3.3
+    },
+    {
+      "segmentId": "cat-line-06",
+      "shotId": "toss-noodles",
+      "text": "锅一颠，炒粉划道弧线，稳稳落回去。",
+      "startSeconds": 16.3,
+      "estimatedDurationSeconds": 3.4
+    },
+    {
+      "segmentId": "cat-line-07",
+      "shotId": "serve-customer",
+      "text": "热腾腾的一盘递出去，客人的尾巴先摇了。",
+      "startSeconds": 19.7,
+      "estimatedDurationSeconds": 3.7
+    }
+  ]
+}
