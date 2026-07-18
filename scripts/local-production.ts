@@ -385,6 +385,7 @@ export const generateLocalProductionShot = async (
           outputRoot: candidateDirectory,
           targetFps: shot.generation.timeline.fps,
           durationSeconds: shot.generation.timeline.frameCount / shot.generation.timeline.fps,
+          temporalFit: 'stretch',
           overwrite: true,
         });
         const checkedAt = new Date().toISOString();

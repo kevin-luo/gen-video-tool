@@ -1397,6 +1397,7 @@ const runProductionShot = async (
         outputRoot: candidateDirectory,
         targetFps: shot.generation.timeline.fps,
         durationSeconds: shot.generation.timeline.frameCount / shot.generation.timeline.fps,
+        temporalFit: 'stretch',
       });
       const normalization = await raceWithAbortSignal(normalizationPromise, active.cancellation.signal);
       if (normalization.outcome === 'aborted') {

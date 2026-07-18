@@ -18,3 +18,4 @@ __pycache__/
 !.env.example
 examples/**/.staging/
 examples/**/.autosave/
+examples/**/generated/

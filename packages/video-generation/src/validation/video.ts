@@ -368,6 +368,8 @@ export interface NormalizeVideoOptions extends VideoToolPathOptions {
   outputRoot?: string;
   targetFps: number;
   durationSeconds?: number;
+  /** Stretch/compress the full source to the requested duration instead of only trimming it. */
+  temporalFit?: 'trim' | 'stretch';
   maxFileSizeBytes?: number;
   timeoutMs?: number;
   overwrite?: boolean;
@@ -380,6 +382,45 @@ export interface NormalizeVideoResult {
   source: VideoProbe;
   output: VideoProbe;
 }
+
+export interface VideoTemporalStretch {
+  targetFrameCount: number;
+  timestampScale: number;
+}
+
+/**
+ * Calculate an endpoint-preserving timestamp scale. Using frame-count spans
+ * avoids the extra-frame drift caused by scaling container duration directly.
+ */
+export const calculateVideoTemporalStretch = (
+  source: Pick<VideoProbe, 'durationSeconds' | 'fps' | 'frameCount'>,
+  targetDurationSeconds: number,
+  targetFps: number,
+): VideoTemporalStretch => {
+  const targetFrameCount = Math.max(1, Math.round(targetDurationSeconds * targetFps));
+  const sourceTimelineSpan = source.frameCount !== null && source.fps !== null && source.frameCount > 1
+    ? (source.frameCount - 1) / source.fps
+    : source.durationSeconds;
+  if (sourceTimelineSpan === null || !Number.isFinite(sourceTimelineSpan) || sourceTimelineSpan <= 0) {
+    throw new VideoValidationError(
+      'VIDEO_METADATA_INVALID',
+      'Temporal stretching requires a positive source timeline span.',
+      {source},
+    );
+  }
+  const targetTimelineSpan = targetFrameCount > 1
+    ? (targetFrameCount - 1) / targetFps
+    : targetDurationSeconds;
+  const timestampScale = targetTimelineSpan / sourceTimelineSpan;
+  if (!Number.isFinite(timestampScale) || timestampScale <= 0) {
+    throw new VideoValidationError(
+      'VIDEO_METADATA_INVALID',
+      'Temporal stretching produced an invalid timestamp scale.',
+      {source, targetDurationSeconds, targetFps},
+    );
+  }
+  return {targetFrameCount, timestampScale};
+};
 
 const isPathInside = (root: string, candidate: string): boolean => {
   const relative = path.relative(path.resolve(root), path.resolve(candidate));
@@ -436,10 +477,19 @@ export const normalizeVideo = async (
   };
   const source = await probeVideo(sourcePath, sharedProbeOptions);
 
+  const stretchToDuration = options.temporalFit === 'stretch' && options.durationSeconds !== undefined;
+  const temporalStretch = stretchToDuration
+    ? calculateVideoTemporalStretch(source, options.durationSeconds!, options.targetFps)
+    : undefined;
+  const targetFrameCount = temporalStretch?.targetFrameCount;
+
   const args = [
     '-hide_banner',
     '-nostdin',
     '-y',
+    ...(stretchToDuration
+      ? ['-itsscale', temporalStretch!.timestampScale.toFixed(12)]
+      : []),
     '-i', sourcePath,
     '-map', '0:v:0',
     '-map_metadata', '-1',
@@ -454,9 +504,10 @@ export const normalizeVideo = async (
     '-fps_mode', 'cfr',
     '-movflags', '+faststart',
   ];
-  if (options.durationSeconds !== undefined) {
+  if (options.durationSeconds !== undefined && !stretchToDuration) {
     args.push('-t', String(options.durationSeconds));
   }
+  if (targetFrameCount !== undefined) args.push('-frames:v', String(targetFrameCount));
   args.push(temporaryPath);
 
   try {
@@ -497,12 +548,13 @@ export const normalizeVideo = async (
       output.pixelFormat === 'yuv420p' &&
       output.fps !== null &&
       Math.abs(output.fps - options.targetFps) <= FPS_TOLERANCE &&
+      (targetFrameCount === undefined || output.frameCount === targetFrameCount) &&
       !output.hasAudio;
     if (!outputIsValid) {
       throw new VideoValidationError(
         'VIDEO_OUTPUT_INVALID',
         'The normalized output is not H.264/yuv420p, constant target FPS, and silent.',
-        {output, targetFps: options.targetFps},
+        {output, targetFps: options.targetFps, targetFrameCount},
       );
     }
 
