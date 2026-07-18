@@ -1,10 +1,12 @@
-import {access, mkdir, mkdtemp, readFile, readdir, realpath, rm, writeFile} from 'node:fs/promises';
+import {access, mkdir, mkdtemp, readFile, readdir, realpath, rename, rm, writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
+import sharp from 'sharp';
 import {afterEach, describe, expect, it} from 'vitest';
 import {
   importAssetPack,
   inspectAssetPack,
+  inspectAssetPackWithPlan,
   loadProjectDirectory,
   projectDurationSeconds,
 } from '@gen-video-tool/asset-pack';
@@ -22,6 +24,23 @@ const readPlan = async (root: string): Promise<Record<string, unknown>> =>
 
 const writePlan = async (root: string, plan: Record<string, unknown>): Promise<void> => {
   await writeFile(path.join(root, 'production.json'), JSON.stringify(plan, null, 2));
+};
+
+const paperGroupNames = ['structure.png', 'hero.png', 'prop.png', 'foreground.png', 'accent.png'];
+
+const addTransparentPaperBoundary = async (root: string): Promise<void> => {
+  await Promise.all(paperGroupNames.map(async (name) => {
+    const imagePath = path.join(root, 'assets', 'shots', 'shot-01', name);
+    const temporary = `${imagePath}.border.png`;
+    await sharp(imagePath).extend({
+      top: 1,
+      bottom: 1,
+      left: 1,
+      right: 1,
+      background: {r: 0, g: 0, b: 0, alpha: 0},
+    }).png().toFile(temporary);
+    await rename(temporary, imagePath);
+  }));
 };
 
 afterEach(async () => {
@@ -152,6 +171,55 @@ describe('v3 asset pack importer', () => {
     const opaqueResult = await inspectAssetPack({source: {kind: 'directory', path: opaque}});
     expect(opaqueResult.status).toBe('rejected');
     expect(opaqueResult.diagnostics.map((item) => item.code)).toContain('IMAGE_ALPHA_REQUIRED');
+  });
+
+  it('applies real transparent-boundary checks only to the paper plan-aware inspector', async () => {
+    const source = await temporaryDirectory();
+    await writeValidAssetPack(source, {mode: 'layered-collage'});
+    await addTransparentPaperBoundary(source);
+
+    const validPaper = await inspectAssetPackWithPlan(
+      {source: {kind: 'directory', path: source}},
+      {requireAlphaForNonBackground: true},
+    );
+    expect(validPaper.inspection.status).toBe('ready');
+
+    const opaqueRgbaPath = path.join(source, 'assets', 'shots', 'shot-01', 'structure.png');
+    const temporary = `${opaqueRgbaPath}.opaque.png`;
+    await sharp({
+      create: {width: 640, height: 720, channels: 4, background: {r: 50, g: 90, b: 80, alpha: 1}},
+    }).png().toFile(temporary);
+    await rename(temporary, opaqueRgbaPath);
+
+    const generic = await inspectAssetPack({source: {kind: 'directory', path: source}});
+    expect(generic.status).toBe('ready');
+
+    const strictPaper = await inspectAssetPackWithPlan(
+      {source: {kind: 'directory', path: source}},
+      {requireAlphaForNonBackground: true},
+    );
+    expect(strictPaper.inspection.status).toBe('rejected');
+    expect(strictPaper.inspection.diagnostics).toContainEqual(expect.objectContaining({
+      code: 'IMAGE_ALPHA_REQUIRED',
+      assetPath: 'assets/shots/shot-01/structure.png',
+    }));
+
+    const tokenAlpha = Buffer.alloc(640 * 720 * 4, 255);
+    tokenAlpha[3] = 0;
+    const tokenTemporary = `${opaqueRgbaPath}.token-alpha.png`;
+    await sharp(tokenAlpha, {raw: {width: 640, height: 720, channels: 4}})
+      .png()
+      .toFile(tokenTemporary);
+    await rename(tokenTemporary, opaqueRgbaPath);
+    const tokenTransparentPaper = await inspectAssetPackWithPlan(
+      {source: {kind: 'directory', path: source}},
+      {requireAlphaForNonBackground: true},
+    );
+    expect(tokenTransparentPaper.inspection.status).toBe('rejected');
+    expect(tokenTransparentPaper.inspection.diagnostics).toContainEqual(expect.objectContaining({
+      code: 'IMAGE_ALPHA_REQUIRED',
+      assetPath: 'assets/shots/shot-01/structure.png',
+    }));
   });
 
   it('reports every missing plan input and unreferenced source file', async () => {

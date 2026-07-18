@@ -56,7 +56,7 @@ type InternalPreset = {
 };
 
 type StagedKeyframes = {
-  start: string;
+  start?: string;
   end?: string;
 };
 
@@ -481,7 +481,7 @@ export class WanGPProvider implements VideoGenerationProvider {
         return {
           available: false,
           endpoint: this.#transport.endpointDescription,
-          reason: 'WanGP is reachable, but no image-to-video model definition was returned.',
+          reason: 'WanGP is reachable, but no text-to-video or image-to-video model definition was returned.',
         };
       }
       const version = this.#transport.serverInfo.version;
@@ -522,7 +522,6 @@ export class WanGPProvider implements VideoGenerationProvider {
       try {
         const rawDefinitions = await this.#transport.callTool('wangp_list_model_defs', {
           main_output: 'video',
-          inputs: 'image',
         });
         const definitions = modelArray(rawDefinitions);
         const byId = new Map(definitions.flatMap((definition) => {
@@ -550,8 +549,11 @@ export class WanGPProvider implements VideoGenerationProvider {
         raw: model.raw,
         ...(model.schema === undefined ? {} : {schema: model.schema}),
         ...(model.defaultSettings === undefined ? {} : {defaultSettings: model.defaultSettings}),
+        ...(model.metadata === undefined ? {} : {metadata: model.metadata}),
       });
-      return capability === null || !capability.imageToVideo ? [] : [capability];
+      return capability === null || (!capability.imageToVideo && !capability.textToVideo)
+        ? []
+        : [capability];
     });
     const provisional = buildWanGPCapabilityCatalog({models: capabilities, profiles: []});
     const shortlisted = new Set([
@@ -566,8 +568,11 @@ export class WanGPProvider implements VideoGenerationProvider {
         raw: model.raw,
         ...(model.schema === undefined ? {} : {schema: model.schema}),
         ...(model.defaultSettings === undefined ? {} : {defaultSettings: model.defaultSettings}),
+        ...(model.metadata === undefined ? {} : {metadata: model.metadata}),
       });
-      return capability === null || !capability.imageToVideo ? [] : [capability];
+      return capability === null || (!capability.imageToVideo && !capability.textToVideo)
+        ? []
+        : [capability];
     });
 
     const profileDirectories = [...new Set(capabilities.flatMap((model) => model.profileDirectories))];
@@ -582,6 +587,19 @@ export class WanGPProvider implements VideoGenerationProvider {
     this.#validateInput(input);
     const preset = await this.#resolvePreset(input.presetId, options);
     this.#validatePresetInput(input, preset);
+    const hasStartKeyframe = input.keyframePath !== undefined;
+    if (!hasStartKeyframe && !preset.modelCapability.textToVideo) {
+      throw new VideoProviderError(
+        'INVALID_REQUEST',
+        `The model selected by ${input.presetId} does not advertise text-to-video generation.`,
+      );
+    }
+    if (hasStartKeyframe && !preset.modelCapability.imageToVideo) {
+      throw new VideoProviderError(
+        'INVALID_REQUEST',
+        `The model selected by ${input.presetId} does not advertise image-to-video generation.`,
+      );
+    }
     if (input.endKeyframePath !== undefined && !modelSupportsEndKeyframe(preset.model)) {
       throw new VideoProviderError(
         'INVALID_REQUEST',
@@ -732,7 +750,6 @@ export class WanGPProvider implements VideoGenerationProvider {
     }
     const raw = await this.#transport.callTool('wangp_list_models', {
       main_output: 'video',
-      inputs: 'image',
       include_availability: true,
     });
     const candidates: InternalModel[] = [];
@@ -747,7 +764,10 @@ export class WanGPProvider implements VideoGenerationProvider {
       const inputs = resultStrings(item.inputs ?? item.input_types ?? item.inputTypes)
         .join(' ')
         .toLowerCase();
-      if ((outputs !== '' && !outputs.includes('video')) || (inputs !== '' && !inputs.includes('image'))) {
+      if (
+        (outputs !== '' && !outputs.includes('video'))
+        || (inputs !== '' && !/(image|text|prompt)/.test(inputs))
+      ) {
         continue;
       }
       let availability = availabilityFrom(item.availability ?? item.status);
@@ -855,8 +875,11 @@ export class WanGPProvider implements VideoGenerationProvider {
     const catalog = await this.getCapabilityCatalog();
     const modelCapability = catalog.models.find((model) => model.runtimeModelId === options.modelRuntimeId);
     const model = (await this.#discoverModels()).find((candidate) => candidate.modelType === options.modelRuntimeId);
-    if (!model || !modelCapability || !modelCapability.imageToVideo) {
-      throw new VideoProviderError('MODEL_MISSING', 'Selected WanGP model is not an MCP-advertised image-to-video model.');
+    if (!model || !modelCapability || (!modelCapability.imageToVideo && !modelCapability.textToVideo)) {
+      throw new VideoProviderError(
+        'MODEL_MISSING',
+        'Selected WanGP model is not an MCP-advertised text-to-video or image-to-video model.',
+      );
     }
     const profile = options.acceleratorProfileId === undefined
       ? undefined
@@ -905,6 +928,15 @@ export class WanGPProvider implements VideoGenerationProvider {
     }
     if (input.prompt.trim() === '') {
       throw new VideoProviderError('INVALID_REQUEST', 'A non-empty motion prompt is required.');
+    }
+    if (input.keyframePath !== undefined && input.keyframePath.trim() === '') {
+      throw new VideoProviderError('INVALID_REQUEST', 'keyframePath must be a non-empty path when provided.');
+    }
+    if (input.endKeyframePath !== undefined && input.endKeyframePath.trim() === '') {
+      throw new VideoProviderError('INVALID_REQUEST', 'endKeyframePath must be a non-empty path when provided.');
+    }
+    if (input.endKeyframePath !== undefined && input.keyframePath === undefined) {
+      throw new VideoProviderError('INVALID_REQUEST', 'endKeyframePath requires keyframePath.');
     }
     for (const [name, value] of [
       ['width', input.width],
@@ -961,6 +993,7 @@ export class WanGPProvider implements VideoGenerationProvider {
   }
 
   async #stageKeyframes(internal: InternalJob): Promise<StagedKeyframes> {
+    if (internal.input.keyframePath === undefined) return {};
     const staging = path.join(this.#outputDirectory, '.wangp-staging', internal.publicJob.id);
     await mkdir(staging, { recursive: true });
     const start = await this.#stageImage(
@@ -990,15 +1023,12 @@ export class WanGPProvider implements VideoGenerationProvider {
       ...(internal.preset.profile === undefined ? {} : {profile: internal.preset.profile}),
       steps,
     });
-    return applyWanGPCachePolicy({
+    const source = applyWanGPCachePolicy({
       ...defaults,
       ...profileSettings,
       model_type: internal.preset.model.modelType,
       prompt: input.prompt,
       ...(input.negativePrompt === undefined ? {} : { negative_prompt: input.negativePrompt }),
-      image_prompt_type: keyframes.end === undefined ? 'S' : 'SE',
-      image_start: keyframes.start,
-      ...(keyframes.end === undefined ? {} : {image_end: keyframes.end}),
       resolution: `${input.width}x${input.height}`,
       video_length: input.frameCount,
       force_fps: String(input.fps),
@@ -1011,6 +1041,20 @@ export class WanGPProvider implements VideoGenerationProvider {
         ? {}
         : {motion_amplitude: 1 + input.motionStrength * 0.4}),
     }, cachePolicy);
+    if (keyframes.start === undefined) {
+      source.image_prompt_type = '';
+      delete source.image_start;
+      delete source.image_end;
+      return source;
+    }
+    source.image_prompt_type = keyframes.end === undefined ? 'S' : 'SE';
+    source.image_start = keyframes.start;
+    if (keyframes.end === undefined) {
+      delete source.image_end;
+    } else {
+      source.image_end = keyframes.end;
+    }
+    return source;
   }
 
   async #applySnapshot(internal: InternalJob, snapshot: WanGPJobSnapshot): Promise<void> {

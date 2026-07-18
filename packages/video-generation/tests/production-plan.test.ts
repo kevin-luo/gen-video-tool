@@ -10,6 +10,59 @@ import {
 } from '../src/production/production-plan';
 import {makeProductionPlan} from './production-fixture';
 
+const ASSEMBLY_KINDS = [
+  'slide-left',
+  'slide-right',
+  'slide-up',
+  'drop',
+  'rise',
+  'snap',
+  'slap',
+  'stamp',
+  'pop',
+] as const;
+
+const makeLayeredCollagePlan = (): Record<string, unknown> => {
+  const raw = structuredClone(makeProductionPlan()) as unknown as Record<string, unknown>;
+  raw.requiredCapabilities = ['local-f5-tts', 'remotion-render', 'ffmpeg', 'sidecar-srt'];
+  raw.shots = [{
+    kind: 'layered-collage',
+    shotId: 'collage-01',
+    deliveryTimeline: {startFrame: 0, durationFrames: 101},
+    layers: [
+      {
+        id: 'background',
+        assetPath: 'assets/shots/collage-01/background.png',
+        role: 'background',
+        zIndex: 0,
+        transform: {x: 0, y: 0, scaleX: 1, scaleY: 1, rotationDegrees: 0, opacity: 1},
+        motionPreset: 'locked',
+      },
+      {
+        id: 'hero',
+        assetPath: 'assets/shots/collage-01/hero.png',
+        role: 'actor',
+        zIndex: 10,
+        transform: {x: 540, y: 1_080, scaleX: 1, scaleY: 1, rotationDegrees: 0, opacity: 1},
+        motionPreset: 'locked',
+        assembly: {
+          kind: 'stamp',
+          startFrame: 12,
+          durationFrames: 24,
+          distance: 320,
+          rotationDegrees: -8,
+          steps: 6,
+        },
+      },
+    ],
+    editorialCamera: {owner: 'editorial-camera', operation: 'push', strength: 0.08},
+  }];
+  const narration = raw.narration as Record<string, unknown>;
+  const segments = narration.segments as Array<Record<string, unknown>>;
+  segments[0]!.shotId = 'collage-01';
+  return raw;
+};
+
 describe('canonical production project v3', () => {
   it('separates exact delivery geometry/timebase from native WanGP generation', () => {
     const plan = makeProductionPlan();
@@ -102,6 +155,155 @@ describe('canonical production project v3', () => {
     expect(productionPlanSchema.safeParse(raw).success).toBe(false);
     (raw.requiredCapabilities as string[]).push('local-i2v-start-end');
     expect(productionPlanSchema.safeParse(raw).success).toBe(true);
+  });
+
+  it.each(ASSEMBLY_KINDS)('accepts %s deterministic collage assembly', (kind) => {
+    const raw = makeLayeredCollagePlan();
+    const shot = (raw.shots as Array<Record<string, unknown>>)[0]!;
+    const layers = shot.layers as Array<Record<string, unknown>>;
+    (layers[1]!.assembly as Record<string, unknown>).kind = kind;
+
+    expect(productionPlanSchema.safeParse(raw).success).toBe(true);
+  });
+
+  it('preserves legacy layered-collage motion when assembly is omitted', () => {
+    const raw = makeLayeredCollagePlan();
+    const shot = (raw.shots as Array<Record<string, unknown>>)[0]!;
+    const layers = shot.layers as Array<Record<string, unknown>>;
+    delete layers[1]!.assembly;
+    layers[1]!.motionPreset = 'paper-sway';
+
+    expect(productionPlanSchema.safeParse(raw).success).toBe(true);
+  });
+
+  it.each([
+    'bob',
+    'sway',
+    'gesture-left',
+    'gesture-right',
+    'exit-left',
+    'exit-right',
+  ] as const)('accepts a finite %s whole-card follow-through', (kind) => {
+    const raw = makeLayeredCollagePlan();
+    const shot = (raw.shots as Array<Record<string, unknown>>)[0]!;
+    const layers = shot.layers as Array<Record<string, unknown>>;
+    const assembly = layers[1]!.assembly as Record<string, unknown>;
+    assembly.followThrough = {
+      kind,
+      delayFrames: 8,
+      durationFrames: 30,
+      distance: kind.startsWith('exit-') ? 1_200 : 36,
+      rotationDegrees: kind.startsWith('exit-') ? 10 : 4,
+      cadenceFps: 3,
+    };
+
+    expect(productionPlanSchema.safeParse(raw).success).toBe(true);
+  });
+
+  it('requires a finite paper follow-through to leave an exact final hold', () => {
+    const raw = makeLayeredCollagePlan();
+    const shot = (raw.shots as Array<Record<string, unknown>>)[0]!;
+    const layers = shot.layers as Array<Record<string, unknown>>;
+    const assembly = layers[1]!.assembly as Record<string, unknown>;
+    assembly.followThrough = {
+      kind: 'bob',
+      delayFrames: 35,
+      durationFrames: 25,
+      distance: 24,
+      rotationDegrees: 3,
+      cadenceFps: 3,
+    };
+
+    const parsed = productionPlanSchema.safeParse(raw);
+    expect(parsed.success).toBe(false);
+    if (!parsed.success) {
+      expect(parsed.error.issues.map((issue) => issue.message)).toContain(
+        'A paper follow-through must finish with at least six exact hold frames remaining.',
+      );
+    }
+  });
+
+  it.each([
+    [{kind: 'bob', distance: 121, rotationDegrees: 4, cadenceFps: 3}, 'distance'],
+    [{kind: 'sway', distance: 24, rotationDegrees: 9, cadenceFps: 3}, 'rotationDegrees'],
+    [{kind: 'bob', distance: 24, rotationDegrees: 4, cadenceFps: 5}, 'cadenceFps'],
+  ] as const)('rejects an unsafe non-rigid paper follow-through (%s)', (partial, _field) => {
+    const raw = makeLayeredCollagePlan();
+    const shot = (raw.shots as Array<Record<string, unknown>>)[0]!;
+    const layers = shot.layers as Array<Record<string, unknown>>;
+    const assembly = layers[1]!.assembly as Record<string, unknown>;
+    assembly.followThrough = {
+      delayFrames: 8,
+      durationFrames: 30,
+      ...partial,
+    };
+
+    expect(productionPlanSchema.safeParse(raw).success).toBe(false);
+  });
+
+  it('rejects assembly on a background layer', () => {
+    const raw = makeLayeredCollagePlan();
+    const shot = (raw.shots as Array<Record<string, unknown>>)[0]!;
+    const layers = shot.layers as Array<Record<string, unknown>>;
+    layers[0]!.assembly = structuredClone(layers[1]!.assembly);
+
+    const parsed = productionPlanSchema.safeParse(raw);
+    expect(parsed.success).toBe(false);
+    if (!parsed.success) {
+      expect(parsed.error.issues.map((issue) => issue.message)).toContain(
+        'Background layers cannot declare assembly motion.',
+      );
+    }
+  });
+
+  it('rejects assembly that finishes outside the shot-local timeline', () => {
+    const raw = makeLayeredCollagePlan();
+    const shot = (raw.shots as Array<Record<string, unknown>>)[0]!;
+    const layers = shot.layers as Array<Record<string, unknown>>;
+    const assembly = layers[1]!.assembly as Record<string, unknown>;
+    assembly.startFrame = 90;
+    assembly.durationFrames = 12;
+
+    const parsed = productionPlanSchema.safeParse(raw);
+    expect(parsed.success).toBe(false);
+    if (!parsed.success) {
+      expect(parsed.error.issues.map((issue) => issue.message)).toContain(
+        'Layer assembly must finish inside the shot-local delivery timeline.',
+      );
+    }
+  });
+
+  it('rejects assembly combined with a non-locked legacy motion preset', () => {
+    const raw = makeLayeredCollagePlan();
+    const shot = (raw.shots as Array<Record<string, unknown>>)[0]!;
+    const layers = shot.layers as Array<Record<string, unknown>>;
+    layers[1]!.motionPreset = 'paper-sway';
+
+    const parsed = productionPlanSchema.safeParse(raw);
+    expect(parsed.success).toBe(false);
+    if (!parsed.success) {
+      expect(parsed.error.issues.map((issue) => issue.message)).toContain(
+        'Layer assembly conflicts with a non-locked legacy motionPreset.',
+      );
+    }
+  });
+
+  it.each([
+    ['durationFrames', 0],
+    ['durationFrames', 3_601],
+    ['distance', -1],
+    ['distance', 4_001],
+    ['rotationDegrees', -46],
+    ['rotationDegrees', 46],
+    ['steps', 1],
+    ['steps', 25],
+  ] as const)('rejects out-of-range collage assembly %s=%s', (field, value) => {
+    const raw = makeLayeredCollagePlan();
+    const shot = (raw.shots as Array<Record<string, unknown>>)[0]!;
+    const layers = shot.layers as Array<Record<string, unknown>>;
+    (layers[1]!.assembly as Record<string, unknown>)[field] = value;
+
+    expect(productionPlanSchema.safeParse(raw).success).toBe(false);
   });
 
   it.each([

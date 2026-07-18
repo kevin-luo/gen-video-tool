@@ -64,14 +64,14 @@ try {
   child.stdin.write(`${JSON.stringify({jsonrpc: '2.0', method: 'notifications/initialized', params: {}})}\n`);
   const listed = await request(2, 'tools/list');
   const toolNames = listed.result?.tools?.map((tool) => tool.name) || [];
-  for (const required of ['gen_video_get_status', 'gen_video_import_asset_pack', 'gen_video_generate_shot', 'gen_video_get_job', 'gen_video_select_candidate', 'gen_video_render_project']) {
+  for (const required of ['gen_video_get_status', 'gen_video_create_from_script', 'gen_video_attach_collage_assets', 'gen_video_import_asset_pack', 'gen_video_generate_shot', 'gen_video_get_job', 'gen_video_select_candidate', 'gen_video_render_project']) {
     if (!toolNames.includes(required)) throw new Error(`Missing MCP tool: ${required}`);
   }
   const status = await request(3, 'tools/call', {name: 'gen_video_get_status', arguments: {}});
   if (status.error || status.result?.isError) throw new Error(JSON.stringify(status.error || status.result));
   const health = await fetch(`http://127.0.0.1:${port}/healthz`).then((response) => response.json());
   const html = await fetch(`http://127.0.0.1:${port}/`).then((response) => response.text());
-  if (health.service !== 'gen-video-tool' || !html.includes('Codex Studio')) throw new Error('Studio browser surface did not load.');
+  if (health.service !== 'gen-video-tool' || !html.includes('一句文案，生成一条视频')) throw new Error('Studio browser surface did not load.');
   process.stdout.write(`${JSON.stringify({ok: true, port, tools: toolNames.length, service: health.service}, null, 2)}\n`);
 } finally {
   stop();

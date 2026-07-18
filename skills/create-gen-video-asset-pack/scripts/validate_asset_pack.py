@@ -619,12 +619,180 @@ def validate_layer_transform(value: object, pointer: str, report: ValidationRepo
         report.error("TRANSFORM_INVALID", f"{pointer}/opacity", "Opacity must be between 0 and 1")
 
 
+PAPER_ASSEMBLY_KINDS = {
+    "slide-left",
+    "slide-right",
+    "slide-up",
+    "drop",
+    "rise",
+    "snap",
+    "slap",
+    "stamp",
+    "pop",
+}
+PAPER_FOLLOW_THROUGH_KINDS = {
+    "bob",
+    "sway",
+    "gesture-left",
+    "gesture-right",
+    "exit-left",
+    "exit-right",
+}
+
+
+def validate_paper_follow_through(
+    value: object,
+    pointer: str,
+    report: ValidationReport,
+    *,
+    entrance_end_frame: int | None,
+    shot_duration: int | None,
+) -> int | None:
+    cue = strict_object(
+        value,
+        {"kind", "delayFrames", "durationFrames", "distance", "rotationDegrees", "cadenceFps"},
+        set(),
+        pointer,
+        report,
+    )
+    if cue is None:
+        return entrance_end_frame
+    kind = cue.get("kind")
+    valid_kind = isinstance(kind, str) and kind in PAPER_FOLLOW_THROUGH_KINDS
+    if not valid_kind:
+        report.error(
+            "PAPER_FOLLOW_THROUGH_KIND_INVALID",
+            f"{pointer}/kind",
+            "Unknown finite rigid-paper follow-through kind",
+        )
+    delay = cue.get("delayFrames")
+    if not is_int(delay) or not 0 <= delay <= 3_600:
+        report.error(
+            "PAPER_FOLLOW_THROUGH_DELAY_INVALID",
+            f"{pointer}/delayFrames",
+            "Follow-through delayFrames must be an integer in 0..3600",
+        )
+        delay = None
+    duration = cue.get("durationFrames")
+    if not is_int(duration) or not 8 <= duration <= 3_600:
+        report.error(
+            "PAPER_FOLLOW_THROUGH_DURATION_INVALID",
+            f"{pointer}/durationFrames",
+            "Follow-through durationFrames must be an integer in 8..3600",
+        )
+        duration = None
+    distance = cue.get("distance")
+    if not finite_number(distance) or not 0 <= distance <= 4_000:
+        report.error(
+            "PAPER_FOLLOW_THROUGH_DISTANCE_INVALID",
+            f"{pointer}/distance",
+            "Follow-through distance must be in 0..4000 delivery pixels",
+        )
+    elif valid_kind and not kind.startswith("exit-") and distance > 120:
+        report.error(
+            "PAPER_FOLLOW_THROUGH_DISTANCE_INVALID",
+            f"{pointer}/distance",
+            "A non-exit follow-through must travel no more than 120 delivery pixels",
+        )
+    rotation = cue.get("rotationDegrees")
+    if not finite_number(rotation) or not -15 <= rotation <= 15:
+        report.error(
+            "PAPER_FOLLOW_THROUGH_ROTATION_INVALID",
+            f"{pointer}/rotationDegrees",
+            "Follow-through rotation must be in -15..15 degrees",
+        )
+    elif valid_kind and not kind.startswith("exit-") and abs(rotation) > 8:
+        report.error(
+            "PAPER_FOLLOW_THROUGH_ROTATION_INVALID",
+            f"{pointer}/rotationDegrees",
+            "A non-exit follow-through must rotate no more than 8 degrees",
+        )
+    cadence = cue.get("cadenceFps")
+    if not is_int(cadence) or cadence not in {2, 3, 4}:
+        report.error(
+            "PAPER_FOLLOW_THROUGH_CADENCE_INVALID",
+            f"{pointer}/cadenceFps",
+            "Follow-through cadenceFps must be exactly 2, 3, or 4",
+        )
+    if entrance_end_frame is None or delay is None or duration is None:
+        return entrance_end_frame
+    finish_frame = entrance_end_frame + delay + duration
+    if shot_duration is not None and finish_frame > shot_duration - 6:
+        report.error(
+            "PAPER_FOLLOW_THROUGH_HOLD_REQUIRED",
+            f"{pointer}/durationFrames",
+            "A finite paper follow-through must leave at least six exact final hold frames",
+        )
+    return finish_frame
+
+
+def validate_collage_assembly(
+    value: object,
+    pointer: str,
+    report: ValidationReport,
+    *,
+    shot_duration: int | None,
+    role: object,
+    motion_preset: object,
+) -> tuple[int, int] | None:
+    assembly = strict_object(
+        value,
+        {"kind", "startFrame", "durationFrames", "distance", "rotationDegrees", "steps"},
+        {"followThrough"},
+        pointer,
+        report,
+    )
+    if assembly is None:
+        return None
+    kind = assembly.get("kind")
+    if kind not in PAPER_ASSEMBLY_KINDS:
+        report.error("PAPER_ASSEMBLY_KIND_INVALID", f"{pointer}/kind", "Unknown rigid-paper assembly kind")
+    start = assembly.get("startFrame")
+    if not is_int(start) or not 0 <= start <= 36_000:
+        report.error("PAPER_ASSEMBLY_START_INVALID", f"{pointer}/startFrame", "Assembly startFrame must be a non-negative integer")
+        start = None
+    duration = assembly.get("durationFrames")
+    if not is_int(duration) or not 1 <= duration <= 3_600:
+        report.error("PAPER_ASSEMBLY_DURATION_INVALID", f"{pointer}/durationFrames", "Assembly durationFrames must be in 1..3600")
+        duration = None
+    distance = assembly.get("distance")
+    if not finite_number(distance) or not 0 <= distance <= 4_000:
+        report.error("PAPER_ASSEMBLY_DISTANCE_INVALID", f"{pointer}/distance", "Assembly distance must be in 0..4000 delivery pixels")
+    rotation = assembly.get("rotationDegrees")
+    if not finite_number(rotation) or not -45 <= rotation <= 45:
+        report.error("PAPER_ASSEMBLY_ROTATION_INVALID", f"{pointer}/rotationDegrees", "Assembly rotation must be in -45..45 degrees")
+    steps = assembly.get("steps")
+    if not is_int(steps) or not 2 <= steps <= 24:
+        report.error("PAPER_ASSEMBLY_STEPS_INVALID", f"{pointer}/steps", "Assembly steps must be an integer in 2..24")
+    if role == "background":
+        report.error("PAPER_BACKGROUND_ASSEMBLY_FORBIDDEN", pointer, "The flat paper-field background must remain visible and cannot assemble")
+    if motion_preset is not None and motion_preset != "locked":
+        report.error("PAPER_ASSEMBLY_MOTION_CONFLICT", pointer, "Assembly cannot be combined with a looping motionPreset")
+    if start is not None and duration is not None and shot_duration is not None and start + duration > shot_duration:
+        report.error("PAPER_ASSEMBLY_OUTSIDE_SHOT", f"{pointer}/durationFrames", "Assembly must finish inside the shot-local timeline")
+    entrance_end_frame = None if start is None or duration is None else start + duration
+    follow_through = assembly.get("followThrough")
+    final_hold_start = entrance_end_frame
+    if follow_through is not None:
+        final_hold_start = validate_paper_follow_through(
+            follow_through,
+            f"{pointer}/followThrough",
+            report,
+            entrance_end_frame=entrance_end_frame,
+            shot_duration=shot_duration,
+        )
+    if start is None or final_hold_start is None:
+        return None
+    return start, final_hold_start
+
+
 def validate_layered_shot(
     reader: PackReader,
     names: set[str],
     shot: dict[str, Any],
     pointer: str,
     report: ValidationReport,
+    duration: int | None,
 ) -> None:
     strict_object(shot, {"shotId", "kind", "deliveryTimeline", "layers", "editorialCamera"}, set(), pointer, report)
     layers = shot.get("layers")
@@ -632,12 +800,17 @@ def validate_layered_shot(
         report.error("LAYERS_INVALID", f"{pointer}/layers", "Layered collage requires at least one layer")
     else:
         ids: set[str] = set()
+        background_count = 0
+        paper_groups: list[tuple[int, int]] = []
+        non_background_count = 0
+        non_background_without_assembly = 0
+        non_uniform_paper_scale = 0
         for index, raw_layer in enumerate(layers):
             layer_pointer = f"{pointer}/layers/{index}"
             layer = strict_object(
                 raw_layer,
                 {"id", "assetPath", "role", "zIndex", "transform"},
-                {"motionPreset"},
+                {"motionPreset", "assembly"},
                 layer_pointer,
                 report,
             )
@@ -651,19 +824,56 @@ def validate_layered_shot(
             role = layer.get("role")
             if role not in {"background", "midground", "actor", "prop", "foreground", "overlay"}:
                 report.error("LAYER_ROLE_INVALID", f"{layer_pointer}/role", "Layer role is invalid")
+            elif role == "background":
+                background_count += 1
+            else:
+                non_background_count += 1
             z_index = layer.get("zIndex")
             if not is_int(z_index) or not -10_000 <= z_index <= 10_000:
                 report.error("LAYER_Z_INVALID", f"{layer_pointer}/zIndex", "zIndex is outside the supported range")
             motion = layer.get("motionPreset")
             if motion is not None and motion not in {"locked", "idle-breathe", "paper-sway", "drift", "pop-in"}:
                 report.error("LAYER_MOTION_INVALID", f"{layer_pointer}/motionPreset", "Unknown layer motion preset")
+            assembly = layer.get("assembly")
+            if assembly is None:
+                if role != "background":
+                    non_background_without_assembly += 1
+            else:
+                timing = validate_collage_assembly(
+                    assembly,
+                    f"{layer_pointer}/assembly",
+                    report,
+                    shot_duration=duration,
+                    role=role,
+                    motion_preset=motion,
+                )
+                if timing is not None:
+                    paper_groups.append(timing)
             asset = require_source_file(reader, names, layer.get("assetPath"), f"{layer_pointer}/assetPath", report)
-            if asset and (asset.lower().endswith(".png") or role in {"actor", "prop", "foreground", "overlay"}):
-                if not asset.lower().endswith(".png"):
-                    report.error("PNG_REQUIRED", f"{layer_pointer}/assetPath", "Cutout layers must use PNG")
-                else:
-                    validate_png(reader, asset, f"{layer_pointer}/assetPath", report, alpha=role in {"actor", "prop", "foreground", "overlay"})
-            validate_layer_transform(layer.get("transform"), f"{layer_pointer}/transform", report)
+            if asset:
+                if role != "background" and not asset.lower().endswith(".png"):
+                    report.error("PNG_REQUIRED", f"{layer_pointer}/assetPath", "Every non-background paper group must use a transparent PNG")
+                elif asset.lower().endswith(".png"):
+                    validate_png(reader, asset, f"{layer_pointer}/assetPath", report, alpha=role != "background")
+            transform = layer.get("transform")
+            validate_layer_transform(transform, f"{layer_pointer}/transform", report)
+            if role != "background" and isinstance(transform, dict):
+                scale_x = transform.get("scaleX")
+                scale_y = transform.get("scaleY")
+                if finite_number(scale_x) and finite_number(scale_y) and abs(scale_x - scale_y) > 1e-6:
+                    non_uniform_paper_scale += 1
+        if background_count != 1:
+            report.error("PAPER_BACKGROUND_COUNT_INVALID", f"{pointer}/layers", "Assemble-from-empty shots require exactly one static background")
+        if not 3 <= non_background_count <= 6:
+            report.error("PAPER_GROUP_COUNT_INVALID", f"{pointer}/layers", "Assemble-from-empty shots require 3..6 non-background paper groups")
+        if non_background_without_assembly:
+            report.error("PAPER_GROUP_ASSEMBLY_REQUIRED", f"{pointer}/layers", "Every non-background group must declare assembly so the shot opens on an empty paper field")
+        if non_uniform_paper_scale:
+            report.error("PAPER_UNIFORM_SCALE_REQUIRED", f"{pointer}/layers", "Rigid paper groups must keep scaleX equal to scaleY to prevent visual distortion")
+        if len({start for start, _ in paper_groups}) < min(3, non_background_count):
+            report.error("PAPER_ASSEMBLY_STAGGER_REQUIRED", f"{pointer}/layers", "Paper groups must use at least three distinct staggered start frames")
+        if duration is not None and paper_groups and max(final_hold_start for _, final_hold_start in paper_groups) > duration - 6:
+            report.error("PAPER_SETTLE_HOLD_REQUIRED", f"{pointer}/layers", "Leave at least six delivery frames to hold the completed composition")
     validate_editorial_camera(shot.get("editorialCamera"), f"{pointer}/editorialCamera", report)
 
 
@@ -1258,7 +1468,7 @@ def validate_production(reader: PackReader, names: set[str], report: ValidationR
                 expected_start = start + duration
             kind = raw_shot.get("kind")
             if kind == "layered-collage":
-                validate_layered_shot(reader, names, raw_shot, pointer, report)
+                validate_layered_shot(reader, names, raw_shot, pointer, report, duration)
             elif kind == "generated-performance":
                 shot_facts = validate_generated_shot(reader, names, raw_shot, pointer, duration, report)
                 facts.generated = facts.generated or shot_facts.generated

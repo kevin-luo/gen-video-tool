@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1920" viewBox="0 0 1080 1920">
+  <defs>
+    <filter id="paper" x="0" y="0" width="100%" height="100%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.68" numOctaves="3" seed="61"/>
+      <feColorMatrix type="saturate" values="0"/>
+      <feComponentTransfer><feFuncA type="table" tableValues="0 0.12"/></feComponentTransfer>
+    </filter>
+  </defs>
+  <rect width="1080" height="1920" fill="#173f72"/>
+  <path d="M0 0H1080V102L877 128 658 82 459 121 225 76 0 116Z" fill="#102c55" opacity=".5"/>
+  <path d="M0 1798L232 1830 449 1780 662 1827 866 1788 1080 1820V1920H0Z" fill="#d64d37" opacity=".3"/>
+  <rect width="1080" height="1920" filter="url(#paper)" opacity=".82"/>
+</svg>

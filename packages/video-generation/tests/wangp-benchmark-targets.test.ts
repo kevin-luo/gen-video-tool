@@ -4,7 +4,7 @@ import {resolveWanGPBenchmarkTargets} from '../src/providers/wangp-benchmark-tar
 import type {WanGPCapabilityCatalog, WanGPModelCapability} from '../src/providers/wangp-capabilities.js';
 
 const model = (runtimeModelId: string, label: string, tags: string[], availability: WanGPModelCapability['availability'] = 'available'): WanGPModelCapability => ({
-  runtimeModelId, label, tags, availability, imageToVideo: true, finetune: false,
+  runtimeModelId, label, tags, availability, textToVideo: false, imageToVideo: true, finetune: false,
   profileDirectories: ['opaque-profiles'], defaultSettings: {}, supportedResolutions: [{width: 480, height: 832}],
   supportedFrameCounts: [49], quantization: ['int8'], cache: {tea: true, mag: true}, raw: {}, schema: {},
 });

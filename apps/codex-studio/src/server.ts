@@ -10,6 +10,7 @@ import {
   selectLocalProductionCandidate,
 } from '../../../scripts/local-production.js';
 import {createStudioConfig, type StudioConfig} from './config.js';
+import {CreationService, CREATION_PLATFORMS, type CreationRecord} from './creation-service.js';
 import {StudioJobRunner, type StudioJobAction} from './job-runner.js';
 import {ProjectService} from './project-service.js';
 
@@ -55,8 +56,88 @@ const secureHeaders: RequestHandler = (_request, response, next) => {
 export const createStudioApp = async (config = createStudioConfig()) => {
   const app = express();
   const projects = new ProjectService(config);
+  const creations = new CreationService(config);
   const jobs = new StudioJobRunner(config);
-  await Promise.all([projects.initialize(), jobs.initialize()]);
+  await Promise.all([projects.initialize(), creations.initialize(), jobs.initialize()]);
+
+  const creationView = (creation: CreationRecord) => {
+    if (!creation.jobId) {
+      return creation.assetStatus === 'awaiting-assets'
+        ? {
+            ...creation,
+            status: 'awaiting-assets',
+            progress: 0.05,
+            stage: 'prepare-paper-assets',
+            detail: '等待完整角色与分层纸片资产',
+            message: '等待完整角色与分层纸片资产',
+            job: null,
+          }
+        : {...creation, status: 'draft', progress: 0, stage: 'draft', job: null};
+    }
+    try {
+      const job = jobs.get(creation.jobId);
+      let stage: string = job.status;
+      let detail: string | undefined;
+      for (const log of [...job.logs].reverse()) {
+        try {
+          const event = JSON.parse(log.text) as {event?: string; stage?: string; detail?: string; phase?: string};
+          if (event.event === 'quick-progress' || event.event === 'paper-collage-progress') {
+            stage = event.stage ?? stage;
+            detail = event.detail;
+            break;
+          }
+          if (event.event === 'render-progress') {
+            stage = 'render-paper-collage';
+            detail = typeof event.phase === 'string'
+              ? `正在渲染纸片动画：${event.phase}`
+              : '正在渲染纸片动画';
+            break;
+          }
+        } catch {
+          // Provider logs are intentionally not part of the creator-facing view.
+        }
+      }
+      const result = typeof job.result === 'object' && job.result !== null
+        ? job.result as Record<string, unknown>
+        : null;
+      const mediaPath = (value: unknown): string | null => {
+        if (typeof value !== 'string' || !value.trim()) return null;
+        const query = new URLSearchParams({
+          scope: 'output',
+          projectId: creation.id,
+          path: value,
+        });
+        return `/api/media?${query.toString()}`;
+      };
+      const videoPath = mediaPath(result?.videoPath);
+      const subtitlePath = mediaPath(result?.subtitlePath);
+      const thumbnailPath = mediaPath(result?.thumbnailPath);
+      const output = videoPath === null ? undefined : {
+        videoPath,
+        ...(subtitlePath === null ? {} : {subtitlePath}),
+        ...(thumbnailPath === null ? {} : {thumbnailPath}),
+      };
+      return {
+        ...creation,
+        status: job.status,
+        progress: job.progress,
+        stage,
+        ...(detail ? {detail, message: detail} : {}),
+        ...(job.error ? {error: job.error} : {}),
+        ...(output === undefined ? {} : {output}),
+        ...(typeof result?.durationSeconds === 'number' ? {durationSeconds: result.durationSeconds} : {}),
+        job: {
+          id: job.id,
+          status: job.status,
+          progress: job.progress,
+          ...(job.error ? {error: job.error} : {}),
+          ...(job.result === undefined ? {} : {result: job.result}),
+        },
+      };
+    } catch {
+      return {...creation, status: 'interrupted', progress: 0, stage: 'interrupted', job: null};
+    }
+  };
 
   app.disable('x-powered-by');
   app.use(secureHeaders);
@@ -78,16 +159,75 @@ export const createStudioApp = async (config = createStudioConfig()) => {
   });
 
   app.get('/api/status', asyncRoute(async (_request, response) => {
-    const projectList = await projects.listProjects();
+    const [projectList, creationList] = await Promise.all([projects.listProjects(), creations.list()]);
     response.json({
       ok: true,
       service: 'gen-video-tool',
       studioUrl: `${config.baseUrl}/?session=${encodeURIComponent(config.sessionToken)}`,
       projectCount: projectList.length,
+      creationCount: creationList.length,
       projectsRoot: config.projectsRoot,
       outputRoot: config.outputRoot,
       activeJob: jobs.list().find((job) => job.status === 'running') ?? null,
     });
+  }));
+
+  app.get('/api/creations', asyncRoute(async (_request, response) => {
+    const list = (await creations.list()).map(creationView);
+    response.json({total: list.length, creations: list});
+  }));
+  app.get('/api/creations/:creationId', asyncRoute(async (request, response) => {
+    response.json(creationView(await creations.get(routeParam(request, 'creationId'))));
+  }));
+  app.post('/api/creations', asyncRoute(async (request, response) => {
+    const input = z.object({
+      script: z.string().trim().min(2).max(300),
+      platform: z.enum(CREATION_PLATFORMS).default('douyin'),
+      durationSeconds: z.number().int().min(20).max(60).default(20),
+      voice: z.boolean().default(true),
+    }).parse(request.body);
+    const creation = await creations.create(input);
+    response.status(202).json(creationView(creation));
+  }));
+  const restartCreation: RequestHandler = asyncRoute(async (request, response) => {
+    const creation = await creations.get(routeParam(request, 'creationId'));
+    if (creation.assetStatus !== 'ready') throw new Error('PAPER_COLLAGE_ASSET_PROJECT_REQUIRED');
+    if (creation.jobId) {
+      const current = jobs.get(creation.jobId);
+      if (current.status === 'queued' || current.status === 'running') {
+        response.status(202).json(creationView(creation));
+        return;
+      }
+    }
+    const job = await jobs.start('produce-video', creation.id);
+    response.status(202).json(creationView(await creations.attachJob(creation.id, job.id)));
+  });
+  app.post('/api/creations/:creationId/retry', restartCreation);
+  app.post('/api/creations/:creationId/finalize', restartCreation);
+  app.post('/api/creations/:creationId/assets/inspect', asyncRoute(async (request, response) => {
+    const creationId = routeParam(request, 'creationId');
+    await creations.get(creationId);
+    const input = z.object({sourcePath: z.string().trim().min(1).max(4_000)}).parse(request.body);
+    response.json(await creations.inspectPaperProject(creationId, input.sourcePath));
+  }));
+  app.post('/api/creations/:creationId/assets', asyncRoute(async (request, response) => {
+    const creationId = routeParam(request, 'creationId');
+    const input = z.object({sourcePath: z.string().trim().min(1).max(4_000)}).parse(request.body);
+    let creation = await creations.attachPaperProject(creationId, input.sourcePath);
+    let hasActiveJob = false;
+    if (creation.jobId) {
+      try {
+        const current = jobs.get(creation.jobId);
+        hasActiveJob = current.status === 'queued' || current.status === 'running';
+      } catch {
+        // The bounded job history may no longer contain an old creation job.
+      }
+    }
+    if (!hasActiveJob) {
+      const job = await jobs.start('produce-video', creation.id);
+      creation = await creations.attachJob(creation.id, job.id);
+    }
+    response.status(202).json(creationView(creation));
   }));
 
   app.get('/api/projects', asyncRoute(async (_request, response) => {

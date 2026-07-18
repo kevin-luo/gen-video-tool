@@ -1,47 +1,52 @@
 ---
 name: gen-video-studio
-description: Operate Gen Video Tool from a Codex conversation. Use when the user asks to start/open the local video studio, turn an idea into a validated Imagegen asset pack, import a pack, inspect a v3 project, run local WanGP generation, review/select candidates, synthesize F5-TTS narration, render an MP4 with sidecar SRT, or continue a stopped local video workflow.
+description: Operate Gen Video Tool from a Codex conversation. Use when the user asks to turn a script into a paper-collage video, generate or import Imagegen assets, open the localhost studio, track or retry a local creation, synthesize F5-TTS narration, render MP4 with sidecar SRT, or explicitly use optional Wan realistic-video mode.
 ---
 
 # Gen Video Studio
 
-Treat Codex as the director and the localhost studio as the observable production surface. Use Codex built-in Imagegen for source imagery; use the `gen_video_*` MCP tools for local project state and execution. Never imply that the browser page itself runs a model.
+Use paper collage as the default visual mode. Treat localhost as the observable local production surface and `gen_video_*` MCP tools as the execution boundary. Never imply that an asset, model run, or render succeeded until a real artifact exists and the corresponding job reaches `complete`.
 
 ## Start or resume
 
-1. Call `gen_video_get_status` and return its `studioUrl` when the user asks to open or start the tool.
-2. Call `gen_video_list_projects` before assuming a project ID.
-3. Call `gen_video_get_project` before deciding the next production step.
-4. Keep long work asynchronous: start one job, report its ID, then poll `gen_video_get_job`. Do not issue duplicate generation while an equivalent queued or running job exists.
+1. Call `gen_video_get_status` and return `studioUrl` when the user asks to open the tool.
+2. Keep long work asynchronous. Return the creation/job ID, poll its status, and do not enqueue an equivalent duplicate.
+3. Use Wan only when the user explicitly requests realistic continuous video or a suitable people-free background plate.
 
-## Create from conversation
+## Default paper-collage workflow
 
-1. Agree on topic, duration, spoken copy, shots, visual continuity, camera ownership, and world/physics constraints.
-2. Invoke `$create-gen-video-asset-pack` to build the v3 source pack. That Skill owns its voice-reference gate, Imagegen asset requirements, schema, validation, and ZIP assembly.
-3. Generate each distinct source image with one Codex built-in Imagegen call. Inspect each result before packaging. Do not call an external image API or ask the desktop app to borrow ChatGPT cookies, subscription tokens, or browser credentials.
-4. Call `gen_video_inspect_asset_pack`. Fix every blocking diagnostic.
-5. Call `gen_video_import_asset_pack` only after inspection is ready.
-6. Return the imported project ID and studio URL, then continue with local production when the user asked for end-to-end execution.
+1. Confirm or infer the finished spoken script, platform, 20–60 second duration, narration choice, no-BGM requirement, and sidecar-SRT delivery.
+2. Call `gen_video_create_from_script` first. Keep its returned `creation_id`; the new request remains `awaiting-assets` and does not start Wan.
+3. Split the script into narration-aligned beats. Give each beat one clear visual metaphor and only 3–6 large paper groups.
+4. Plan a flat paper field, whole character/animal cutouts, environment groups, props, foreground occluders, and accents. Keep every performing character as one complete uninterrupted PNG; never split limbs or animate exposed body parts.
+5. In a Codex conversation, generate the approved imagery with built-in Imagegen. Prefer the editorial profile: flat bold color field, black-and-white halftone subject cutouts, cream keylines, restrained paper shadows, and selective cardstock accents. Inspect alpha, complete silhouettes, limb count, facing, support, prop ownership, and crop boundaries. In standalone mode, use the configured image provider instead; `scripts/stylize-paper-cutout.ts` is the deterministic fallback for an already-approved complete PNG.
+6. Invoke `$create-gen-video-asset-pack` to build a v3 pack containing only `layered-collage` shots whose exact duration matches the creation request.
+7. Call `gen_video_inspect_collage_assets` with `creation_id` and the local ZIP/directory path. Fix every blocker; this step is read-only.
+8. Call `gen_video_attach_collage_assets` with the same `creation_id` and source path. Attachment is atomic and queues F5-TTS plus deterministic Remotion/FFmpeg production.
+9. Poll `gen_video_get_creation` until a terminal state. Use `gen_video_get_job` only for bounded diagnostics. Do not enqueue another creation while the attached one is running.
+10. On `complete`, return only the real MP4/SRT paths and `studioUrl`. Confirm that subtitles are sidecar-only and BGM is absent. On failure, retry only the failed asset or job.
 
-The source pack is immutable input. Never place generated candidates, narration state, or final renders inside it.
+The renderer starts each beat from the empty paper field, places 3–6 groups with staggered `slide`, `snap`, and `stamp`, preserves explicit z-order/foreground occlusion, optionally gives a complete actor card one finite quantized `bob`, `sway`, `gesture`, or `exit`, then returns to an exact final hold. Never use a perpetual idle loop.
 
-## Run local production
+## Image generation boundary
 
-For every `generated-performance` shot:
+The localhost page cannot call Codex built-in Imagegen and cannot borrow ChatGPT cookies, subscription tokens, browser sessions, or authorization JSON.
 
-1. Start `gen_video_detect_runtime` once per project/session and wait for a completed job whose result says the requested preset is available.
-2. Start `gen_video_generate_shot`. One invocation generates the next planned immutable seed only; call again only after the first candidate finishes.
-3. Read the refreshed project. Do not select automatically.
-4. Ask the user to inspect the actual candidate video in the studio. Check identity, anatomy, direction, support, contact, occlusion, continuity, and camera stability.
-5. Use `gen_video_select_candidate` only after explicit user acceptance. Use `gen_video_reject_candidate` with a concrete reason when it fails.
+- In a Codex conversation, generate images with built-in Imagegen, save them locally, then inspect and attach the resulting collage pack to the existing creation.
+- In standalone localhost/Electron use, require a configured image provider or a user-supplied asset pack. If neither exists, stop at asset generation with an actionable error.
+- Never silently replace missing paper assets with Wan footage or placeholder images.
 
-After every generated shot is selected, start `gen_video_synthesize_narration`. After narration completes, start `gen_video_render_project`. Poll each job to a terminal state and return the real output paths. The final delivery remains MP4 + external SRT, with no burned subtitles and no BGM.
+## Optional realistic mode
+
+Use WanGP only after the user explicitly selects realistic continuous motion. Run capability detection, generate immutable candidates, and require review for identity, anatomy, direction, support, contact, occlusion, continuity, and camera stability. Wan may also generate a people-free background plate when appropriate, but it does not own default paper-character motion.
+
+After all realistic candidates are accepted, run F5-TTS and the same Remotion/FFmpeg delivery gates. Final delivery remains MP4 + external SRT, without burned subtitles or BGM.
 
 ## Failure discipline
 
-- Treat missing models, invalid packs, failed technical QA, unselected candidates, missing voice reference, and render errors as blockers.
-- Report the last meaningful job log and the exact next action. Never replace failed motion with a static keyframe.
-- Use `gen_video_cancel_job` only for a job the user asked to stop or an obviously duplicated queued job.
-- Preserve human review. Technical QA cannot certify physical or narrative correctness.
+- Treat missing image assets/provider, invalid packs, missing local models, failed QA, missing voice reference, and render errors as blockers.
+- Report the last meaningful stage and exact next action. Do not claim that a static placeholder or failed generated clip is a finished video.
+- Use `gen_video_cancel_job` only when the user asks to stop or a queued job is an obvious duplicate.
+- Preserve human visual review for anatomy and world logic; technical QA cannot certify narrative or physical correctness.
 
-Read [references/conversation-recipes.md](references/conversation-recipes.md) when translating a brief into tool calls or resuming an unfamiliar project.
+Read [references/conversation-recipes.md](references/conversation-recipes.md) for unfamiliar asset-pack recovery or optional realistic-mode tool calls.

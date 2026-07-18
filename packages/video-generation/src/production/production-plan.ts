@@ -138,6 +138,63 @@ const layerTransformSchema = z.object({
   opacity: z.number().finite().min(0).max(1),
 }).strict();
 
+export const collageFollowThroughSchema = z.object({
+  kind: z.enum([
+    'bob',
+    'sway',
+    'gesture-left',
+    'gesture-right',
+    'exit-left',
+    'exit-right',
+  ]),
+  /** Still shot-local frames after the entrance has settled. */
+  delayFrames: z.number().int().nonnegative().max(3_600),
+  durationFrames: z.number().int().min(8).max(3_600),
+  distance: z.number().finite().min(0).max(4_000),
+  rotationDegrees: z.number().finite().min(-15).max(15),
+  /** Discrete placements at tactile 2-4fps on the fixed 30fps delivery. */
+  cadenceFps: z.union([z.literal(2), z.literal(3), z.literal(4)]),
+}).strict().superRefine((cue, context) => {
+  if (!cue.kind.startsWith('exit-') && cue.distance > 120) {
+    context.addIssue({
+      code: 'custom',
+      path: ['distance'],
+      message: 'A non-exit paper follow-through must travel no more than 120 delivery pixels.',
+    });
+  }
+  if (!cue.kind.startsWith('exit-') && Math.abs(cue.rotationDegrees) > 8) {
+    context.addIssue({
+      code: 'custom',
+      path: ['rotationDegrees'],
+      message: 'A non-exit paper follow-through must rotate no more than 8 degrees.',
+    });
+  }
+});
+export type CollageFollowThrough = z.infer<typeof collageFollowThroughSchema>;
+
+export const collageAssemblySchema = z.object({
+  kind: z.enum([
+    'slide-left',
+    'slide-right',
+    'slide-up',
+    'drop',
+    'rise',
+    'snap',
+    'slap',
+    'stamp',
+    'pop',
+  ]),
+  /** Shot-local delivery frame at which the paper piece starts assembling. */
+  startFrame: z.number().int().nonnegative().max(36_000),
+  durationFrames: z.number().int().min(1).max(3_600),
+  distance: z.number().finite().min(0).max(4_000),
+  rotationDegrees: z.number().finite().min(-45).max(45),
+  steps: z.number().int().min(2).max(24),
+  /** Optional finite whole-card action; never a perpetual idle loop. */
+  followThrough: collageFollowThroughSchema.optional(),
+}).strict();
+export type CollageAssembly = z.infer<typeof collageAssemblySchema>;
+
 const collageLayerSchema = z.object({
   id: productionIdSchema,
   assetPath: safePosixRelativePathSchema,
@@ -145,6 +202,7 @@ const collageLayerSchema = z.object({
   zIndex: z.number().int().min(-10_000).max(10_000),
   transform: layerTransformSchema,
   motionPreset: z.enum(['locked', 'idle-breathe', 'paper-sway', 'drift', 'pop-in']).optional(),
+  assembly: collageAssemblySchema.optional(),
 }).strict();
 
 const commonShotFields = {
@@ -164,6 +222,42 @@ export const layeredCollageShotSchema = z.object({
       context.addIssue({code: 'custom', path: ['layers', index, 'id'], message: `Duplicate layer ID: ${layer.id}`});
     }
     layerIds.add(layer.id);
+    if (layer.assembly === undefined) return;
+    if (layer.role === 'background') {
+      context.addIssue({
+        code: 'custom',
+        path: ['layers', index, 'assembly'],
+        message: 'Background layers cannot declare assembly motion.',
+      });
+    }
+    if (layer.assembly.startFrame + layer.assembly.durationFrames > shot.deliveryTimeline.durationFrames) {
+      context.addIssue({
+        code: 'custom',
+        path: ['layers', index, 'assembly', 'durationFrames'],
+        message: 'Layer assembly must finish inside the shot-local delivery timeline.',
+      });
+    }
+    const followThrough = layer.assembly.followThrough;
+    if (followThrough !== undefined) {
+      const finishFrame = layer.assembly.startFrame
+        + layer.assembly.durationFrames
+        + followThrough.delayFrames
+        + followThrough.durationFrames;
+      if (finishFrame > shot.deliveryTimeline.durationFrames - 6) {
+        context.addIssue({
+          code: 'custom',
+          path: ['layers', index, 'assembly', 'followThrough', 'durationFrames'],
+          message: 'A paper follow-through must finish with at least six exact hold frames remaining.',
+        });
+      }
+    }
+    if (layer.motionPreset !== undefined && layer.motionPreset !== 'locked') {
+      context.addIssue({
+        code: 'custom',
+        path: ['layers', index, 'motionPreset'],
+        message: 'Layer assembly conflicts with a non-locked legacy motionPreset.',
+      });
+    }
   });
 });
 export type LayeredCollageShot = z.infer<typeof layeredCollageShotSchema>;

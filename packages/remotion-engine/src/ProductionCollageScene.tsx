@@ -1,6 +1,7 @@
 import React from 'react';
 import {AbsoluteFill, Easing, Img, interpolate, useCurrentFrame} from 'remotion';
-import {sampleCamera} from '@gen-video-tool/motion-core';
+import {sampleCamera, samplePaperAssembly} from '@gen-video-tool/motion-core';
+import type {PaperAssemblyCue} from '@gen-video-tool/motion-core';
 import type {EditorialCameraPlan} from '@gen-video-tool/video-generation';
 import {resolveAssetSource} from './asset-source';
 import {compileEditorialCamera} from './hybrid-camera';
@@ -18,6 +19,8 @@ export type ProductionCollageLayer = {
     rotationDegrees: number;
     opacity: number;
   };
+  /** Finite rigid-paper entrance/follow-through. It supersedes legacy looping motion. */
+  assembly?: PaperAssemblyCue | undefined;
   motionPreset?: 'locked' | 'idle-breathe' | 'paper-sway' | 'drift' | 'pop-in' | undefined;
 };
 
@@ -36,11 +39,25 @@ const stablePhase = (id: string): number => {
   return Math.abs(hash % 360) * (Math.PI / 180);
 };
 
-const sampleLayerMotion = (
+export type ProductionCollageLayerMotion = {
+  x: number;
+  y: number;
+  scale: number;
+  rotation: number;
+  opacity: number;
+};
+
+export const PAPER_LAYER_DROP_SHADOW = 'drop-shadow(0 7px 8px rgba(24, 15, 9, 0.22))';
+
+export const productionCollageLayerFilter = (
+  role: ProductionCollageLayer['role'],
+): string | undefined => role === 'background' ? undefined : PAPER_LAYER_DROP_SHADOW;
+
+const sampleLegacyLayerMotion = (
   layer: ProductionCollageLayer,
   frame: number,
   durationFrames: number,
-): {x: number; y: number; scale: number; rotation: number; opacity: number} => {
+): ProductionCollageLayerMotion => {
   const phase = stablePhase(layer.id);
   const progress = durationFrames <= 1 ? 1 : frame / (durationFrames - 1);
   const wave = Math.sin(progress * Math.PI * 2 + phase);
@@ -64,6 +81,14 @@ const sampleLayerMotion = (
   }
 };
 
+export const sampleProductionCollageLayerMotion = (
+  layer: ProductionCollageLayer,
+  frame: number,
+  durationFrames: number,
+): ProductionCollageLayerMotion => layer.assembly === undefined
+  ? sampleLegacyLayerMotion(layer, frame, durationFrames)
+  : samplePaperAssembly(layer.assembly, frame);
+
 /** Deterministic renderer for v3 layered-collage shots; no v2 ShotDocument is involved. */
 export const ProductionCollageScene: React.FC<ProductionCollageSceneProps> = ({
   durationFrames,
@@ -86,7 +111,8 @@ export const ProductionCollageScene: React.FC<ProductionCollageSceneProps> = ({
         }}
       >
         {[...layers].sort((left, right) => left.zIndex - right.zIndex).map((layer) => {
-          const motion = sampleLayerMotion(layer, frame, durationFrames);
+          const motion = sampleProductionCollageLayerMotion(layer, frame, durationFrames);
+          const filter = productionCollageLayerFilter(layer.role);
           const transform = [
             layer.role === 'background' ? '' : 'translate(-50%, -50%)',
             `translate3d(${layer.transform.x + motion.x}px, ${layer.transform.y + motion.y}px, 0)`,
@@ -120,6 +146,7 @@ export const ProductionCollageScene: React.FC<ProductionCollageSceneProps> = ({
                 transform,
                 transformOrigin: '50% 50%',
                 zIndex: layer.zIndex,
+                filter,
                 willChange: 'transform, opacity',
               }}
             />

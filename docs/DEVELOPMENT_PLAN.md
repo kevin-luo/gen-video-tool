@@ -2,10 +2,11 @@
 
 ## 2026-07-18 状态基线
 
-项目已经转为 greenfield v3，不再安排旧格式兼容或迁移器。当前目标是完成一条可以被证据证明的本地闭环：便携源资产包 → WanGP 双候选 → 人工选片 → F5-TTS → Remotion/FFmpeg 交付。
+项目已经转为 greenfield v3，不再安排旧格式兼容或迁移器。当前产品有两条本地闭环：默认“文案 → awaiting-assets → 纸片资产包 → F5-TTS → Remotion 纸片组装 → FFmpeg 成片”，以及显式选择后才启用的“便携源资产包 → WanGP 双候选 → 人工选片 → F5-TTS → Remotion/FFmpeg 交付”。默认链路不把人物交给 T2V 变形。
 
 已经有一条完整真实运行证据链：
 
+- 一页式创作页完成 20 秒真实纸片任务：4 个分层场景、完整角色 PNG 的错峰刚体组装、F5-TTS 旁白、H.264/AAC MP4 与外挂 SRT；
 - WanGP 官方 MCP stdio、本机 CUDA/PyTorch 环境和 Fun InP 1.3B 完成两轮双候选生成；
 - 人工拒绝错误动作并接受 seed `314159` 的连续拉窗帘候选；
 - 本地 F5-TTS 完成真实参考音频克隆、时长补齐和外挂 SRT；
@@ -78,15 +79,26 @@
 
 ### P4B — Codex 插件与浏览器制作台
 
-状态：实现并完成协议、浏览器与真实本地检测验收。
+状态：实现并完成协议、浏览器、真实一键成片与本地检测验收。
 
 - 根插件清单、个人 marketplace、两个生产 Skill 与 MCP 自动启动器；
-- 14 个项目、资产包、长任务、人工审片和任务控制工具；
-- 只绑定 `127.0.0.1` 的三栏制作台，实际候选预览、门禁、任务进度和取消均可操作；
+- 20 个一键创作、纸片资产、项目、资产包、长任务、人工审片和任务控制工具；
+- 只绑定 `127.0.0.1` 的一页式创作台，支持文案、平台、真实进度、成片预览、外挂 SRT、失败重试和作品恢复；
+- 高级模式保留 v3 资产包、双候选与人工审片链路，不把工程门禁暴露在默认页面；
 - 高熵临时会话令牌、同源检查、严格 CSP、媒体根目录约束和 shell-free 子进程；
 - 长任务持久化、串行执行、等价任务去重、重启中断恢复和有界日志/结果；
-- 插件协议探针已完成 MCP initialize、14 工具枚举、状态调用、healthz 和页面载入；
-- 浏览器实测从制作台触发 WanGP 本地运行时检测并成功完成，不是静态 UI 演示。
+- 插件协议探针已完成 MCP initialize、20 工具枚举、状态调用、healthz 和页面载入；
+- 浏览器实测从文案创建 `awaiting-assets` 请求；附加通过校验的纸片包后，才触发 F5-TTS/Remotion/FFmpeg，不会静默回退到 FastWan。
+
+### P4C — 默认纸片动画生产器
+
+状态：实现并完成 20 秒样片与 creator 入口端到端验证。
+
+- `paper-assembly` 只使用仿射刚体变换，提供 `slide`、`snap`、`stamp`、`drop`、`pop`、`settle` 等定格节拍；
+- 完整人物/动物保持单张透明 PNG，按显式 z-order、支撑和前后遮挡组装，禁止拆肢和网格形变；
+- `paper-collage-production.ts` 强制 layered-collage、时长匹配、无 BGM、外置 SRT，并原子发布 `final.mp4`、`final.srt`、`thumbnail.jpg`；
+- `CreationService` 的 create 只保存 `awaiting-assets`；inspect/attach 通过后才排队 F5-TTS 和 Remotion；
+- 样片 [`examples/cat-noodle-collage-v1`](../examples/cat-noodle-collage-v1/README.md) 已完成真实 20 秒端到端渲染和 12 帧 QA。
 
 ## 已完成关键路径 — v3 样片验收
 

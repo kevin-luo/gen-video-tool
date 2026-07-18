@@ -3,42 +3,54 @@
 ## Craft settings
 
 - CRAFT_LEVEL: 9
-- UI_MOTION: 4
-- VISUAL_DENSITY: 8
-- DESIGN_VARIANCE: 5
-- Theme: light Graphite workspace with a dark neutral preview stage
-- Accent: cinnabar red, reserved for the primary action, focus, selection, and blocking errors
-- Signature bet: a torn-paper registration tab marks the active shot consistently in the shot rail and timeline
+- UI_MOTION: 3
+- VISUAL_DENSITY: 3
+- DESIGN_VARIANCE: 4
+- Theme: warm porcelain creator canvas with neutral graphite type
+- Accent: cinnabar red, reserved for the primary action, active navigation, focus, and errors
+- Signature bet: the large script canvas transforms in place into generation progress and the finished-video preview
 
 ## Token spine
 
-The implementation must expose primitive, semantic, and component tokens in CSS. No feature component may introduce an untracked color, spacing, radius, duration, shadow, or z-index.
+The implementation keeps primitive, semantic, and component tokens in CSS. Feature components must not introduce untracked colors, spacing, radii, durations, shadows, or z-index values.
 
 ### Primitive direction
 
-- Neutral hue: subtly cool graphite, never pure black or white.
-- Accent hue: OKLCH hue near 28–32, with lower chroma in dark surfaces.
-- Spacing: 4/8/12/16/24/32/48 px; dense editor controls may use 6 px only through a named compact token.
-- Radii: 3 px for compact controls, 6 px for panels, 10 px for dialogs; the video canvas remains nearly square.
-- Type: system CJK sans for body, tabular numerals, a compact mono only for timecode and file paths.
-- Motion: 80/150/240/400 ms; no elastic or decorative idle motion in the desktop UI.
+- Neutral hue: warm paper-white surfaces with graphite text, never pure black or pure white across large areas.
+- Accent hue: OKLCH hue near 28–32; one accent per viewport.
+- Spacing: 4/8/12/16/24/32/48/64/96 px; the creator canvas uses fluid spacing through named tokens.
+- Radii: 6 px inputs, 10 px controls and media cards, 14 px large composer/result surfaces.
+- Type: system CJK sans for body and controls; 16 px body floor; tabular numerals for time and progress.
+- Motion: 80/150/240/400 ms; no bounce or decorative idle motion; reduced-motion users get instant spatial changes.
 - Z-index: base, raised, dropdown, sticky, backdrop, modal, toast, tooltip.
 
 ### Semantic surface stack
 
-- `surface-canvas`: app background
-- `surface-panel`: shot/property/timeline panes
-- `surface-raised`: controls and popovers
-- `surface-stage`: dark preview stage
-- `surface-sunken`: code/path/validation details
+- `surface-canvas`: warm app background
+- `surface-panel`: white creation and result surfaces
+- `surface-raised`: controls, menus, and recent-work cards
+- `surface-stage`: dark video preview
+- `surface-sunken`: advanced diagnostics and paths
 - `text-primary`, `text-secondary`, `text-tertiary`
 - `border-subtle`, `border-default`, `border-strong`, `border-focus`
 - `status-success`, `status-warning`, `status-error`, `status-info`
 
+### Creator component metrics
+
+- Header height: 72 px desktop, 60 px compact.
+- Creator max width: 1120 px.
+- Composer minimum height: 248 px desktop, 208 px compact.
+- Primary action height: 64 px desktop, 56 px compact.
+- Recent-work media ratio: 16:9.
+- Minimum interactive target: 44 px.
+
 ### Interaction contract
 
-- Minimum pointer target: 44 px unless a dense desktop control expands its hit area invisibly.
-- All icon-only buttons need an accessible name and tooltip.
+- The textarea has a persistent programmatic label plus visible placeholder/helper text; paste is never blocked.
+- `Ctrl/Cmd + Enter` starts generation; plain Enter creates a new line.
+- Submit stays enabled until a request begins, then retains its label and shows progress.
+- Errors are inline, focusable, specific, and recoverable without losing the script.
+- Platform selection is a visible segmented control, not a hidden dropdown.
+- Advanced controls use disclosure and preserve the simple default route.
 - Focus is always visible; dialogs trap focus and restore it.
 - Hover transforms are pointer-gated; reduced motion disables spatial transitions.
-- Disabled actions always expose the blocking reason inline or on invocation.

@@ -20,6 +20,7 @@ describe('Codex plugin distribution', () => {
     expect(mcp.mcpServers['gen-video-tool']?.args.join(' ')).toContain('scripts/start-codex-plugin.mjs');
     expect(fs.existsSync(path.join(root, 'skills/gen-video-studio/SKILL.md'))).toBe(true);
     expect(fs.existsSync(path.join(root, 'skills/create-gen-video-asset-pack/SKILL.md'))).toBe(true);
+    expect(fs.existsSync(path.join(root, 'skills/create-gen-video-asset-pack/assets/paper-template/production.json'))).toBe(true);
   });
 
   it('has no scaffold placeholders in the user-facing plugin artifacts', () => {
@@ -28,9 +29,13 @@ describe('Codex plugin distribution', () => {
     }
   });
 
-  it('uses an in-page review dialog instead of unsupported browser prompts', () => {
+  it('uses an in-page creator flow and settings dialog instead of browser prompts', () => {
     const studioScript = fs.readFileSync(path.join(root, 'apps/codex-studio/web/studio.js'), 'utf8');
+    const studioHtml = fs.readFileSync(path.join(root, 'apps/codex-studio/web/index.html'), 'utf8');
     expect(studioScript).not.toContain('window.prompt');
-    expect(studioScript).toContain("elements['review-dialog'].showModal()");
+    expect(studioScript).toContain("elements['settings-dialog'].showModal()");
+    expect(studioScript).toContain("api('/api/creations'");
+    expect(studioScript).toContain('data-open-creation');
+    expect(studioHtml).toContain('id="duration-input" type="range" min="20" max="60"');
   });
 });

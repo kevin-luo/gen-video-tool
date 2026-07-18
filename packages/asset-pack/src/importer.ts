@@ -1,9 +1,12 @@
 import {lstat, realpath, rename} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
+import type {ProductionPlan} from '@gen-video-tool/video-generation';
+import sharp from 'sharp';
 import {copyDirectoryToStaging} from './directory-source';
 import {diagnostic, hasBlockingDiagnostics, sortDiagnostics} from './diagnostics';
-import {isPathInside, normalizeAssetPath} from './paths';
+import {validateImage} from './media';
+import {isPathInside, normalizeAssetPath, resolveAssetPath} from './paths';
 import {cleanupStagingDirectory, createStagingDirectory} from './staging';
 import type {
   AssetPackDiagnostic,
@@ -78,10 +81,89 @@ const cleanupWithDiagnostic = async (stagingRoot: string): Promise<AssetPackDiag
   }
 };
 
-/** Validate an asset pack without leaving files behind or changing project state. */
-export const inspectAssetPack = async (
+export type AssetPackPlanInspection = {
+  inspection: AssetPackInspection;
+  /** Parsed authoritative plan, returned only by the explicit plan-aware inspector. */
+  productionPlan: ProductionPlan | null;
+};
+
+export type InspectAssetPackWithPlanOptions = {
+  /**
+   * Paper-creation-only cutout gate. Besides requiring an Alpha channel, every
+   * non-background layer must have transparent corners and meaningful clear
+   * boundary space so an opaque RGBA rectangle (or a token transparent pixel)
+   * cannot masquerade as a prepared cutout.
+   * Ordinary project inspection/import keeps its prior alpha policy.
+   */
+  requireAlphaForNonBackground?: boolean;
+};
+
+const TRANSPARENT_ALPHA_MAX = 4;
+
+const hasTransparentCutoutBoundary = async (absolutePath: string): Promise<boolean> => {
+  const metadata = await sharp(absolutePath, {failOn: 'error'}).metadata();
+  if (!metadata.hasAlpha || metadata.width === undefined || metadata.height === undefined) return false;
+  const {width, height} = metadata;
+  const {data, info} = await sharp(absolutePath, {failOn: 'error'})
+    .toColourspace('srgb')
+    .ensureAlpha()
+    .raw()
+    .toBuffer({resolveWithObject: true});
+  const alphaAt = (x: number, y: number): number => (
+    data[(y * width + x) * info.channels + info.channels - 1] ?? 255
+  );
+  const corners = [
+    alphaAt(0, 0),
+    alphaAt(width - 1, 0),
+    alphaAt(0, height - 1),
+    alphaAt(width - 1, height - 1),
+  ];
+  if (!corners.every((alpha) => alpha <= TRANSPARENT_ALPHA_MAX)) return false;
+
+  let transparent = 0;
+  let boundaryPixels = 0;
+  for (let x = 0; x < width; x += 1) {
+    boundaryPixels += 2;
+    if (alphaAt(x, 0) <= TRANSPARENT_ALPHA_MAX) transparent += 1;
+    if (alphaAt(x, height - 1) <= TRANSPARENT_ALPHA_MAX) transparent += 1;
+  }
+  for (let y = 1; y < height - 1; y += 1) {
+    boundaryPixels += 2;
+    if (alphaAt(0, y) <= TRANSPARENT_ALPHA_MAX) transparent += 1;
+    if (alphaAt(width - 1, y) <= TRANSPARENT_ALPHA_MAX) transparent += 1;
+  }
+  return transparent >= Math.max(4, Math.ceil(boundaryPixels * 0.05));
+};
+
+const validateCutoutTransparency = async (
+  absolutePath: string,
+  assetPath: string,
+  jsonPath: string,
+): Promise<AssetPackDiagnostic[]> => {
+  try {
+    if (await hasTransparentCutoutBoundary(absolutePath)) return [];
+    return [diagnostic('IMAGE_ALPHA_REQUIRED', 'error', '纸片资源必须在外边缘包含真实透明像素。', {
+      path: jsonPath,
+      assetPath,
+      suggestion: '请抠除背景并在画布外缘保留透明留白；不能用全不透明 RGBA 图片或半透明矩形冒充纸片抠图。',
+    })];
+  } catch {
+    return [diagnostic('IMAGE_ALPHA_REQUIRED', 'error', '无法确认纸片资源具有真实透明边缘。', {
+      path: jsonPath,
+      assetPath,
+      suggestion: '请重新导出带透明留白的 PNG 后重试。',
+    })];
+  }
+};
+
+/**
+ * Plan-aware inspection for callers that apply a stricter product-mode gate.
+ * It still cleans staging before returning and never changes project state.
+ */
+export const inspectAssetPackWithPlan = async (
   request: InspectAssetPackRequest,
-): Promise<AssetPackInspection> => {
+  options: InspectAssetPackWithPlanOptions = {},
+): Promise<AssetPackPlanInspection> => {
   const limits = mergeLimits(request.limits);
   let stagingRoot: string | null = null;
   let pipeline: PipelineResult = {
@@ -92,6 +174,34 @@ export const inspectAssetPack = async (
   try {
     stagingRoot = await createStagingDirectory(path.join(tmpdir(), 'gen-video-tool-inspection'));
     pipeline = await extractAndValidate(request.source, stagingRoot, limits);
+    if (
+      options.requireAlphaForNonBackground === true
+      && pipeline.validation?.productionPlan !== null
+      && pipeline.validation?.productionPlan !== undefined
+    ) {
+      const checked = new Set<string>();
+      for (const [shotIndex, shot] of pipeline.validation.productionPlan.shots.entries()) {
+        if (shot.kind !== 'layered-collage') continue;
+        for (const [layerIndex, layer] of shot.layers.entries()) {
+          if (layer.role === 'background' || checked.has(layer.assetPath)) continue;
+          checked.add(layer.assetPath);
+          const absolutePath = resolveAssetPath(pipeline.validation.contentRoot, layer.assetPath);
+          if (absolutePath === null) continue;
+          const jsonPath = `/shots/${shotIndex}/layers/${layerIndex}/assetPath`;
+          extraDiagnostics.push(...await validateImage({
+            assetPath: layer.assetPath,
+            absolutePath,
+            requireAlpha: true,
+            jsonPath,
+          }, limits));
+          extraDiagnostics.push(...await validateCutoutTransparency(
+            absolutePath,
+            layer.assetPath,
+            jsonPath,
+          ));
+        }
+      }
+    }
   } catch (error) {
     void error;
     extraDiagnostics.push(diagnostic('IMPORT_FAILED', 'error', '资产包检查失败。', {
@@ -100,8 +210,18 @@ export const inspectAssetPack = async (
   } finally {
     if (stagingRoot) extraDiagnostics.push(...await cleanupWithDiagnostic(stagingRoot));
   }
-  return asInspection(request.source, pipeline, extraDiagnostics);
+  return {
+    inspection: asInspection(request.source, pipeline, extraDiagnostics),
+    productionPlan: pipeline.validation?.productionPlan === null || pipeline.validation?.productionPlan === undefined
+      ? null
+      : structuredClone(pipeline.validation.productionPlan),
+  };
 };
+
+/** Validate an asset pack without leaving files behind or changing project state. */
+export const inspectAssetPack = async (
+  request: InspectAssetPackRequest,
+): Promise<AssetPackInspection> => (await inspectAssetPackWithPlan(request)).inspection;
 
 const destinationExists = async (destination: string): Promise<boolean> => {
   try {

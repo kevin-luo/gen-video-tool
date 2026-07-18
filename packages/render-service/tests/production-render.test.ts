@@ -5,6 +5,7 @@ import path from 'node:path';
 import {afterEach, describe, expect, it} from 'vitest';
 import {
   createProductionState,
+  parseProductionPlan,
   parseProductionState,
   writeProductionPlan,
   writeProductionState,
@@ -147,6 +148,64 @@ const inspectedProbe = async (absolutePath: string) => {
   };
 };
 
+const makeLayeredAssemblyPlan = (assemblyOverrides: Record<string, unknown> = {}) => {
+  const raw = structuredClone(makeProductionPlan()) as unknown as Record<string, unknown>;
+  raw.requiredCapabilities = ['local-f5-tts', 'remotion-render', 'ffmpeg', 'sidecar-srt'];
+  raw.shots = [
+    {
+      kind: 'layered-collage',
+      shotId: 'collage-01',
+      deliveryTimeline: {startFrame: 0, durationFrames: 40},
+      layers: [{
+        id: 'background-01',
+        assetPath: 'assets/shots/collage-01/background.png',
+        role: 'background',
+        zIndex: 0,
+        transform: {x: 0, y: 0, scaleX: 1, scaleY: 1, rotationDegrees: 0, opacity: 1},
+        motionPreset: 'locked',
+      }],
+      editorialCamera: {owner: 'editorial-camera', operation: 'locked', strength: 0},
+    },
+    {
+      kind: 'layered-collage',
+      shotId: 'collage-02',
+      deliveryTimeline: {startFrame: 40, durationFrames: 61},
+      layers: [
+        {
+          id: 'background-02',
+          assetPath: 'assets/shots/collage-02/background.png',
+          role: 'background',
+          zIndex: 0,
+          transform: {x: 0, y: 0, scaleX: 1, scaleY: 1, rotationDegrees: 0, opacity: 1},
+          motionPreset: 'locked',
+        },
+        {
+          id: 'hero-02',
+          assetPath: 'assets/shots/collage-02/hero.png',
+          role: 'actor',
+          zIndex: 10,
+          transform: {x: 540, y: 1_080, scaleX: 1, scaleY: 1, rotationDegrees: 0, opacity: 1},
+          motionPreset: 'locked',
+          assembly: {
+            kind: 'stamp',
+            startFrame: 10,
+            durationFrames: 12,
+            distance: 320,
+            rotationDegrees: -8,
+            steps: 6,
+            ...assemblyOverrides,
+          },
+        },
+      ],
+      editorialCamera: {owner: 'editorial-camera', operation: 'push', strength: 0.08},
+    },
+  ];
+  const narration = raw.narration as Record<string, unknown>;
+  const segments = narration.segments as Array<Record<string, unknown>>;
+  segments[0]!.shotId = 'collage-02';
+  return parseProductionPlan(raw);
+};
+
 const writeRenderFixture = async (
   root: string,
   options: {candidate?: Buffer; matte?: Buffer} = {},
@@ -216,6 +275,47 @@ describe('v3 production render bridge', () => {
     expect(samples.filter((sample) => sample.reasons.includes('contact-adjacent')).map(({frame}) => frame)).toEqual(
       expect.arrayContaining([48, 49, 51, 52]),
     );
+    expect(samples.some((sample) => sample.reasons.includes('assembly-adjacent'))).toBe(false);
+  });
+
+  it('samples paper assembly before, during, after, and at exact identity', () => {
+    const samples = buildProjectQaFrameSamples(makeLayeredAssemblyPlan());
+    const assemblySamples = samples.filter((sample) => sample.reasons.includes('assembly-adjacent'));
+
+    expect(assemblySamples.map(({frame}) => frame)).toEqual([49, 50, 56, 61, 62]);
+    expect(assemblySamples.every((sample) => sample.shotId === 'collage-02')).toBe(true);
+  });
+
+  it('samples a finite paper follow-through before, during, and at its exact hold', () => {
+    const samples = buildProjectQaFrameSamples(makeLayeredAssemblyPlan({
+      followThrough: {
+        kind: 'gesture-right',
+        delayFrames: 3,
+        durationFrames: 12,
+        distance: 40,
+        rotationDegrees: 4,
+        cadenceFps: 3,
+      },
+    }));
+    const frames = samples
+      .filter((sample) => sample.reasons.includes('assembly-adjacent'))
+      .map(({frame}) => frame);
+
+    expect(frames).toEqual([49, 50, 56, 61, 62, 64, 65, 71, 76, 77]);
+  });
+
+  it('deduplicates assembly samples and skips an exact-identity frame outside the shot', () => {
+    const samples = buildProjectQaFrameSamples(makeLayeredAssemblyPlan({
+      startFrame: 58,
+      durationFrames: 3,
+    }));
+    const frames = samples
+      .filter((sample) => sample.reasons.includes('assembly-adjacent'))
+      .map(({frame}) => frame);
+
+    expect(frames).toEqual([97, 98, 99, 100]);
+    expect(new Set(frames).size).toBe(frames.length);
+    expect(frames).not.toContain(101);
   });
 
   it('loads reviewed state and prefers existing v3 narration/SRT files', async () => {

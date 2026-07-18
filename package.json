@@ -25,6 +25,8 @@
     "verify:asset-pack": "tsx scripts/verify-asset-pack-roundtrip.ts",
     "narrate:production": "tsx scripts/synthesize-production.ts",
     "render:production": "tsx scripts/render-production.ts",
+    "paper:production": "tsx scripts/paper-collage-production.ts",
+    "paper:stylize": "tsx scripts/stylize-paper-cutout.ts",
     "local:production": "tsx scripts/local-production-cli.ts",
     "local:production:detect": "tsx scripts/local-production-cli.ts detect",
     "local:production:status": "tsx scripts/local-production-cli.ts status",

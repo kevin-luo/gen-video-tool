@@ -1,0 +1,339 @@
+{
+  "schemaVersion": 1,
+  "source": {
+    "path": "F:\\video\\gen-video-tool\\examples\\cat-noodle-collage-v1\\assets\\source-sheets\\environment.png",
+    "width": 1536,
+    "height": 1024,
+    "channels": 3,
+    "hasAlpha": false,
+    "rows": 2,
+    "columns": 3
+  },
+  "options": {
+    "chroma": {
+      "r": 0,
+      "g": 255,
+      "b": 0
+    },
+    "chromaTolerance": 72,
+    "chromaSoftness": 36,
+    "padding": 24,
+    "alphaThreshold": 8,
+    "minAlphaCoverage": 0.002,
+    "edgeBand": 2,
+    "prefix": "environment"
+  },
+  "cells": [
+    {
+      "index": 0,
+      "row": 0,
+      "column": 0,
+      "sourceRect": {
+        "left": 0,
+        "top": 0,
+        "width": 512,
+        "height": 512
+      },
+      "trimBox": {
+        "left": 186,
+        "top": 148,
+        "width": 292,
+        "height": 260
+      },
+      "output": {
+        "path": "environment-r01-c01.png",
+        "width": 340,
+        "height": 308
+      },
+      "alphaCoverage": {
+        "source": 0.250526,
+        "output": 0.627139
+      },
+      "transparentCorners": {
+        "topLeft": true,
+        "topRight": true,
+        "bottomRight": true,
+        "bottomLeft": true
+      },
+      "edgeOccupancy": {
+        "top": 0,
+        "right": 0,
+        "bottom": 0,
+        "left": 0
+      },
+      "status": "ok",
+      "issues": []
+    },
+    {
+      "index": 1,
+      "row": 0,
+      "column": 1,
+      "sourceRect": {
+        "left": 512,
+        "top": 0,
+        "width": 512,
+        "height": 512
+      },
+      "trimBox": {
+        "left": 124,
+        "top": 177,
+        "width": 253,
+        "height": 241
+      },
+      "output": {
+        "path": "environment-r01-c02.png",
+        "width": 301,
+        "height": 289
+      },
+      "alphaCoverage": {
+        "source": 0.200264,
+        "output": 0.603502
+      },
+      "transparentCorners": {
+        "topLeft": true,
+        "topRight": true,
+        "bottomRight": true,
+        "bottomLeft": true
+      },
+      "edgeOccupancy": {
+        "top": 0,
+        "right": 0,
+        "bottom": 0,
+        "left": 0
+      },
+      "status": "ok",
+      "issues": []
+    },
+    {
+      "index": 2,
+      "row": 0,
+      "column": 2,
+      "sourceRect": {
+        "left": 1024,
+        "top": 0,
+        "width": 512,
+        "height": 512
+      },
+      "trimBox": {
+        "left": 13,
+        "top": 259,
+        "width": 327,
+        "height": 139
+      },
+      "output": {
+        "path": "environment-r01-c03.png",
+        "width": 375,
+        "height": 187
+      },
+      "alphaCoverage": {
+        "source": 0.16819,
+        "output": 0.628734
+      },
+      "transparentCorners": {
+        "topLeft": true,
+        "topRight": true,
+        "bottomRight": true,
+        "bottomLeft": true
+      },
+      "edgeOccupancy": {
+        "top": 0,
+        "right": 0,
+        "bottom": 0,
+        "left": 0
+      },
+      "status": "ok",
+      "issues": []
+    },
+    {
+      "index": 3,
+      "row": 1,
+      "column": 0,
+      "sourceRect": {
+        "left": 0,
+        "top": 512,
+        "width": 512,
+        "height": 512
+      },
+      "trimBox": {
+        "left": 203,
+        "top": 28,
+        "width": 227,
+        "height": 323
+      },
+      "output": {
+        "path": "environment-r02-c01.png",
+        "width": 275,
+        "height": 371
+      },
+      "alphaCoverage": {
+        "source": 0.158058,
+        "output": 0.406116
+      },
+      "transparentCorners": {
+        "topLeft": true,
+        "topRight": true,
+        "bottomRight": true,
+        "bottomLeft": true
+      },
+      "edgeOccupancy": {
+        "top": 0,
+        "right": 0,
+        "bottom": 0,
+        "left": 0
+      },
+      "status": "ok",
+      "issues": []
+    },
+    {
+      "index": 4,
+      "row": 1,
+      "column": 1,
+      "sourceRect": {
+        "left": 512,
+        "top": 512,
+        "width": 512,
+        "height": 512
+      },
+      "trimBox": {
+        "left": 101,
+        "top": 31,
+        "width": 282,
+        "height": 330
+      },
+      "output": {
+        "path": "environment-r02-c02.png",
+        "width": 330,
+        "height": 378
+      },
+      "alphaCoverage": {
+        "source": 0.238266,
+        "output": 0.500722
+      },
+      "transparentCorners": {
+        "topLeft": true,
+        "topRight": true,
+        "bottomRight": true,
+        "bottomLeft": true
+      },
+      "edgeOccupancy": {
+        "top": 0,
+        "right": 0,
+        "bottom": 0,
+        "left": 0
+      },
+      "status": "ok",
+      "issues": []
+    },
+    {
+      "index": 5,
+      "row": 1,
+      "column": 2,
+      "sourceRect": {
+        "left": 1024,
+        "top": 512,
+        "width": 512,
+        "height": 512
+      },
+      "trimBox": {
+        "left": 22,
+        "top": 77,
+        "width": 307,
+        "height": 266
+      },
+      "output": {
+        "path": "environment-r02-c03.png",
+        "width": 355,
+        "height": 314
+      },
+      "alphaCoverage": {
+        "source": 0.263489,
+        "output": 0.619647
+      },
+      "transparentCorners": {
+        "topLeft": true,
+        "topRight": true,
+        "bottomRight": true,
+        "bottomLeft": true
+      },
+      "edgeOccupancy": {
+        "top": 0,
+        "right": 0,
+        "bottom": 0,
+        "left": 0
+      },
+      "status": "ok",
+      "issues": []
+    }
+  ],
+  "boundaries": [
+    {
+      "orientation": "vertical",
+      "firstCell": 0,
+      "secondCell": 1,
+      "matchingForegroundSamples": 0,
+      "sampleCount": 512,
+      "overlapFraction": 0,
+      "suspectedCrossCellFragment": false
+    },
+    {
+      "orientation": "vertical",
+      "firstCell": 1,
+      "secondCell": 2,
+      "matchingForegroundSamples": 0,
+      "sampleCount": 512,
+      "overlapFraction": 0,
+      "suspectedCrossCellFragment": false
+    },
+    {
+      "orientation": "vertical",
+      "firstCell": 3,
+      "secondCell": 4,
+      "matchingForegroundSamples": 0,
+      "sampleCount": 512,
+      "overlapFraction": 0,
+      "suspectedCrossCellFragment": false
+    },
+    {
+      "orientation": "vertical",
+      "firstCell": 4,
+      "secondCell": 5,
+      "matchingForegroundSamples": 0,
+      "sampleCount": 512,
+      "overlapFraction": 0,
+      "suspectedCrossCellFragment": false
+    },
+    {
+      "orientation": "horizontal",
+      "firstCell": 0,
+      "secondCell": 3,
+      "matchingForegroundSamples": 0,
+      "sampleCount": 512,
+      "overlapFraction": 0,
+      "suspectedCrossCellFragment": false
+    },
+    {
+      "orientation": "horizontal",
+      "firstCell": 1,
+      "secondCell": 4,
+      "matchingForegroundSamples": 0,
+      "sampleCount": 512,
+      "overlapFraction": 0,
+      "suspectedCrossCellFragment": false
+    },
+    {
+      "orientation": "horizontal",
+      "firstCell": 2,
+      "secondCell": 5,
+      "matchingForegroundSamples": 0,
+      "sampleCount": 512,
+      "overlapFraction": 0,
+      "suspectedCrossCellFragment": false
+    }
+  ],
+  "qa": {
+    "passed": true,
+    "errorCount": 0,
+    "warningCount": 0,
+    "issues": []
+  }
+}

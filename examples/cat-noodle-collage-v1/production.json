@@ -1,0 +1,359 @@
+{
+  "schemaVersion": 3,
+  "projectId": "cat-noodle-collage-v1",
+  "metadata": {
+    "title": "夜市最后一份炒粉",
+    "locale": "zh-CN"
+  },
+  "networkPolicy": "offline-only",
+  "requiredCapabilities": [
+    "local-f5-tts",
+    "remotion-render",
+    "ffmpeg",
+    "sidecar-srt"
+  ],
+  "delivery": {
+    "raster": {
+      "width": 1080,
+      "height": 1920,
+      "pixelAspectRatio": 1
+    },
+    "timeline": {
+      "fps": 30,
+      "durationFrames": 600
+    },
+    "video": {
+      "path": "generated/final/cat-noodle-collage.mp4",
+      "codec": "h264",
+      "pixelFormat": "yuv420p"
+    },
+    "audio": {
+      "path": "generated/audio/narration.wav",
+      "sourceFormat": "wav",
+      "muxCodec": "aac",
+      "muxSampleRate": 48000
+    },
+    "subtitles": {
+      "path": "generated/final/cat-noodle-collage.srt",
+      "format": "srt",
+      "burnIn": false
+    },
+    "bgm": null
+  },
+  "narration": {
+    "engine": "f5-tts-local",
+    "language": "zh-CN",
+    "referenceAudioPath": "assets/voice-reference.wav",
+    "referenceText": "夜市刚亮灯，橘猫的炒粉摊开张了。客人说少辣，它先把铁锅烧到冒烟。米粉一落锅，它左爪倒粉，右爪稳住锅柄。豆芽鸡蛋一翻，香气飘过半条街。酱油沿锅边一淋，火苗呼地窜起来。锅一颠，炒粉划道弧线，稳稳落回去。热腾腾的一盘递出去，客人的尾巴先摇了。",
+    "speed": 0.5,
+    "segments": [
+      {
+        "segmentId": "closing-market-line",
+        "shotId": "closing-market",
+        "text": "夜市都开始收摊了，卷帘门一扇接一扇落下，只有街角这只小猫还守着炉火。",
+        "outputPath": "generated/audio/segments/closing-market.wav"
+      },
+      {
+        "segmentId": "last-pan-line",
+        "shotId": "last-pan",
+        "text": "锅里只剩最后一份炒粉，它两只爪子握紧锅铲，翻得比谁都认真。",
+        "outputPath": "generated/audio/segments/last-pan.wav"
+      },
+      {
+        "segmentId": "aroma-corner-line",
+        "shotId": "aroma-corner",
+        "text": "香气绕过路灯，拐了个弯，把最后一位赶路的客人勾了回来。",
+        "outputPath": "generated/audio/segments/aroma-corner.wav"
+      },
+      {
+        "segmentId": "warm-handoff-line",
+        "shotId": "warm-handoff",
+        "text": "小猫把热腾腾的晚餐递过去，客人笑了。今晚这摊，刚好一份不剩。",
+        "outputPath": "generated/audio/segments/warm-handoff.wav"
+      }
+    ],
+    "mergedAudioPath": "generated/audio/narration.wav"
+  },
+  "shots": [
+    {
+      "kind": "layered-collage",
+      "shotId": "closing-market",
+      "deliveryTimeline": {"startFrame": 0, "durationFrames": 150},
+      "layers": [
+        {
+          "id": "closing-background",
+          "assetPath": "assets/backgrounds/01-closing-teal.png",
+          "role": "background",
+          "zIndex": 0,
+          "transform": {"x": 0, "y": 0, "scaleX": 1, "scaleY": 1, "rotationDegrees": 0, "opacity": 1},
+          "motionPreset": "locked"
+        },
+        {
+          "id": "closed-market",
+          "assetPath": "assets/environment/environment-r02-c03.png",
+          "role": "midground",
+          "zIndex": 110,
+          "transform": {"x": 790, "y": 1160, "scaleX": 1.55, "scaleY": 1.55, "rotationDegrees": 0, "opacity": 1},
+          "assembly": {"kind": "slide-right", "startFrame": 12, "durationFrames": 30, "distance": 760, "rotationDegrees": -6, "steps": 10}
+        },
+        {
+          "id": "street-corner",
+          "assetPath": "assets/environment/environment-r02-c01.png",
+          "role": "midground",
+          "zIndex": 120,
+          "transform": {"x": 235, "y": 1200, "scaleX": 1.65, "scaleY": 1.65, "rotationDegrees": 0, "opacity": 1},
+          "assembly": {"kind": "slide-left", "startFrame": 30, "durationFrames": 30, "distance": 720, "rotationDegrees": 5, "steps": 10}
+        },
+        {
+          "id": "night-moon",
+          "assetPath": "assets/accents/accent-r01-c03.png",
+          "role": "overlay",
+          "zIndex": 180,
+          "transform": {"x": 785, "y": 440, "scaleX": 1, "scaleY": 1, "rotationDegrees": -4, "opacity": 1},
+          "assembly": {"kind": "stamp", "startFrame": 48, "durationFrames": 24, "distance": 160, "rotationDegrees": -4, "steps": 8}
+        },
+        {
+          "id": "vendor-cat-ready",
+          "assetPath": "assets/characters/character-r01-c01.png",
+          "role": "actor",
+          "zIndex": 320,
+          "transform": {"x": 470, "y": 1270, "scaleX": 1.95, "scaleY": 1.95, "rotationDegrees": 0, "opacity": 1},
+          "assembly": {
+            "kind": "rise",
+            "startFrame": 68,
+            "durationFrames": 30,
+            "distance": 620,
+            "rotationDegrees": 5,
+            "steps": 10,
+            "followThrough": {"kind": "sway", "delayFrames": 4, "durationFrames": 32, "distance": 28, "rotationDegrees": 3, "cadenceFps": 3}
+          }
+        },
+        {
+          "id": "closing-counter-front",
+          "assetPath": "assets/environment/environment-r01-c03.png",
+          "role": "foreground",
+          "zIndex": 520,
+          "transform": {"x": 465, "y": 1580, "scaleX": 1.9, "scaleY": 1.9, "rotationDegrees": 0, "opacity": 1},
+          "assembly": {"kind": "rise", "startFrame": 92, "durationFrames": 28, "distance": 500, "rotationDegrees": -3, "steps": 9}
+        }
+      ],
+      "editorialCamera": {"owner": "editorial-camera", "operation": "locked", "strength": 0}
+    },
+    {
+      "kind": "layered-collage",
+      "shotId": "last-pan",
+      "deliveryTimeline": {"startFrame": 150, "durationFrames": 150},
+      "layers": [
+        {
+          "id": "last-pan-background",
+          "assetPath": "assets/backgrounds/02-last-pan-red.png",
+          "role": "background",
+          "zIndex": 0,
+          "transform": {"x": 0, "y": 0, "scaleX": 1, "scaleY": 1, "rotationDegrees": 0, "opacity": 1},
+          "motionPreset": "locked"
+        },
+        {
+          "id": "noodle-stall-back",
+          "assetPath": "assets/environment/environment-r01-c01.png",
+          "role": "midground",
+          "zIndex": 130,
+          "transform": {"x": 540, "y": 970, "scaleX": 2.2, "scaleY": 2.2, "rotationDegrees": 0, "opacity": 1},
+          "assembly": {"kind": "drop", "startFrame": 10, "durationFrames": 32, "distance": 760, "rotationDegrees": -5, "steps": 10}
+        },
+        {
+          "id": "last-pan-counter-front",
+          "assetPath": "assets/environment/environment-r01-c03.png",
+          "role": "foreground",
+          "zIndex": 520,
+          "transform": {"x": 540, "y": 1580, "scaleX": 2.3, "scaleY": 2.3, "rotationDegrees": 0, "opacity": 1},
+          "assembly": {"kind": "rise", "startFrame": 32, "durationFrames": 28, "distance": 560, "rotationDegrees": 3, "steps": 9}
+        },
+        {
+          "id": "vendor-cat-stirring",
+          "assetPath": "assets/characters/character-r01-c02.png",
+          "role": "actor",
+          "zIndex": 320,
+          "transform": {"x": 520, "y": 1260, "scaleX": 1.9, "scaleY": 1.9, "rotationDegrees": 0, "opacity": 1},
+          "assembly": {
+            "kind": "slide-left",
+            "startFrame": 54,
+            "durationFrames": 30,
+            "distance": 780,
+            "rotationDegrees": 6,
+            "steps": 10,
+            "followThrough": {"kind": "bob", "delayFrames": 6, "durationFrames": 28, "distance": 36, "rotationDegrees": 2, "cadenceFps": 3}
+          }
+        },
+        {
+          "id": "last-order-burst",
+          "assetPath": "assets/accents/accent-r02-c01.png",
+          "role": "overlay",
+          "zIndex": 610,
+          "transform": {"x": 820, "y": 480, "scaleX": 0.82, "scaleY": 0.82, "rotationDegrees": 7, "opacity": 1},
+          "assembly": {"kind": "slap", "startFrame": 82, "durationFrames": 24, "distance": 180, "rotationDegrees": 7, "steps": 8}
+        },
+        {
+          "id": "pan-sparkles",
+          "assetPath": "assets/accents/accent-r01-c02.png",
+          "role": "overlay",
+          "zIndex": 620,
+          "transform": {"x": 760, "y": 790, "scaleX": 0.72, "scaleY": 0.72, "rotationDegrees": -5, "opacity": 1},
+          "assembly": {"kind": "pop", "startFrame": 106, "durationFrames": 24, "distance": 120, "rotationDegrees": -5, "steps": 8}
+        }
+      ],
+      "editorialCamera": {"owner": "editorial-camera", "operation": "locked", "strength": 0}
+    },
+    {
+      "kind": "layered-collage",
+      "shotId": "aroma-corner",
+      "deliveryTimeline": {"startFrame": 300, "durationFrames": 150},
+      "layers": [
+        {
+          "id": "aroma-background",
+          "assetPath": "assets/backgrounds/03-aroma-mustard.png",
+          "role": "background",
+          "zIndex": 0,
+          "transform": {"x": 0, "y": 0, "scaleX": 1, "scaleY": 1, "rotationDegrees": 0, "opacity": 1},
+          "motionPreset": "locked"
+        },
+        {
+          "id": "aroma-street-corner",
+          "assetPath": "assets/environment/environment-r02-c01.png",
+          "role": "midground",
+          "zIndex": 120,
+          "transform": {"x": 230, "y": 1190, "scaleX": 1.72, "scaleY": 1.72, "rotationDegrees": 0, "opacity": 1},
+          "assembly": {"kind": "slide-left", "startFrame": 10, "durationFrames": 30, "distance": 720, "rotationDegrees": -6, "steps": 10}
+        },
+        {
+          "id": "vendor-cat-smelling",
+          "assetPath": "assets/characters/character-r01-c03.png",
+          "role": "actor",
+          "zIndex": 320,
+          "transform": {"x": 260, "y": 1290, "scaleX": 1.75, "scaleY": 1.75, "rotationDegrees": 0, "opacity": 1},
+          "assembly": {
+            "kind": "rise",
+            "startFrame": 34,
+            "durationFrames": 28,
+            "distance": 560,
+            "rotationDegrees": 4,
+            "steps": 9,
+            "followThrough": {"kind": "sway", "delayFrames": 6, "durationFrames": 30, "distance": 22, "rotationDegrees": 3, "cadenceFps": 3}
+          }
+        },
+        {
+          "id": "aroma-ribbon",
+          "assetPath": "assets/accents/accent-r01-c01.png",
+          "role": "prop",
+          "zIndex": 430,
+          "transform": {"x": 540, "y": 920, "scaleX": 1.3, "scaleY": 1.3, "rotationDegrees": -5, "opacity": 1},
+          "assembly": {"kind": "slide-left", "startFrame": 58, "durationFrames": 30, "distance": 620, "rotationDegrees": -5, "steps": 10}
+        },
+        {
+          "id": "last-customer-walking",
+          "assetPath": "assets/characters/character-r02-c02.png",
+          "role": "actor",
+          "zIndex": 330,
+          "transform": {"x": 815, "y": 1310, "scaleX": 1.82, "scaleY": 1.82, "rotationDegrees": 0, "opacity": 1},
+          "assembly": {
+            "kind": "slide-right",
+            "startFrame": 84,
+            "durationFrames": 30,
+            "distance": 720,
+            "rotationDegrees": -4,
+            "steps": 10,
+            "followThrough": {"kind": "gesture-left", "delayFrames": 2, "durationFrames": 24, "distance": 48, "rotationDegrees": 4, "cadenceFps": 3}
+          }
+        },
+        {
+          "id": "aroma-sparkles",
+          "assetPath": "assets/accents/accent-r01-c02.png",
+          "role": "overlay",
+          "zIndex": 610,
+          "transform": {"x": 780, "y": 560, "scaleX": 0.7, "scaleY": 0.7, "rotationDegrees": 6, "opacity": 1},
+          "assembly": {"kind": "stamp", "startFrame": 112, "durationFrames": 22, "distance": 100, "rotationDegrees": 6, "steps": 8}
+        }
+      ],
+      "editorialCamera": {"owner": "editorial-camera", "operation": "locked", "strength": 0}
+    },
+    {
+      "kind": "layered-collage",
+      "shotId": "warm-handoff",
+      "deliveryTimeline": {"startFrame": 450, "durationFrames": 150},
+      "layers": [
+        {
+          "id": "handoff-background",
+          "assetPath": "assets/backgrounds/04-handoff-blue.png",
+          "role": "background",
+          "zIndex": 0,
+          "transform": {"x": 0, "y": 0, "scaleX": 1, "scaleY": 1, "rotationDegrees": 0, "opacity": 1},
+          "motionPreset": "locked"
+        },
+        {
+          "id": "handoff-stall-back",
+          "assetPath": "assets/environment/environment-r01-c01.png",
+          "role": "midground",
+          "zIndex": 130,
+          "transform": {"x": 330, "y": 980, "scaleX": 1.9, "scaleY": 1.9, "rotationDegrees": 0, "opacity": 1},
+          "assembly": {"kind": "drop", "startFrame": 10, "durationFrames": 30, "distance": 720, "rotationDegrees": -5, "steps": 10}
+        },
+        {
+          "id": "handoff-counter-front",
+          "assetPath": "assets/environment/environment-r01-c03.png",
+          "role": "foreground",
+          "zIndex": 520,
+          "transform": {"x": 335, "y": 1560, "scaleX": 1.45, "scaleY": 1.45, "rotationDegrees": 0, "opacity": 1},
+          "assembly": {"kind": "rise", "startFrame": 32, "durationFrames": 26, "distance": 480, "rotationDegrees": 3, "steps": 9}
+        },
+        {
+          "id": "vendor-cat-handoff",
+          "assetPath": "assets/characters/character-r02-c01.png",
+          "role": "actor",
+          "zIndex": 320,
+          "transform": {"x": 350, "y": 1280, "scaleX": 1.85, "scaleY": 1.85, "rotationDegrees": 0, "opacity": 1},
+          "assembly": {
+            "kind": "slide-left",
+            "startFrame": 54,
+            "durationFrames": 28,
+            "distance": 720,
+            "rotationDegrees": 5,
+            "steps": 9,
+            "followThrough": {"kind": "gesture-right", "delayFrames": 4, "durationFrames": 26, "distance": 50, "rotationDegrees": 4, "cadenceFps": 3}
+          }
+        },
+        {
+          "id": "last-customer-receiving",
+          "assetPath": "assets/characters/character-r02-c03.png",
+          "role": "actor",
+          "zIndex": 330,
+          "transform": {"x": 710, "y": 1290, "scaleX": 1.8, "scaleY": 1.8, "rotationDegrees": 0, "opacity": 1},
+          "assembly": {
+            "kind": "slide-right",
+            "startFrame": 78,
+            "durationFrames": 28,
+            "distance": 720,
+            "rotationDegrees": -5,
+            "steps": 9,
+            "followThrough": {"kind": "gesture-left", "delayFrames": 2, "durationFrames": 30, "distance": 44, "rotationDegrees": 4, "cadenceFps": 3}
+          }
+        },
+        {
+          "id": "handoff-steam-heart",
+          "assetPath": "assets/accents/accent-r02-c03.png",
+          "role": "overlay",
+          "zIndex": 610,
+          "transform": {"x": 555, "y": 980, "scaleX": 0.82, "scaleY": 0.82, "rotationDegrees": 0, "opacity": 1},
+          "assembly": {"kind": "stamp", "startFrame": 104, "durationFrames": 22, "distance": 120, "rotationDegrees": 4, "steps": 8}
+        },
+        {
+          "id": "handoff-sparkles",
+          "assetPath": "assets/accents/accent-r01-c02.png",
+          "role": "overlay",
+          "zIndex": 620,
+          "transform": {"x": 690, "y": 620, "scaleX": 0.65, "scaleY": 0.65, "rotationDegrees": -6, "opacity": 1},
+          "assembly": {"kind": "pop", "startFrame": 112, "durationFrames": 20, "distance": 100, "rotationDegrees": -6, "steps": 8}
+        }
+      ],
+      "editorialCamera": {"owner": "editorial-camera", "operation": "locked", "strength": 0}
+    }
+  ]
+}

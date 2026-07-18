@@ -28,6 +28,7 @@ export type WanGPModelCapability = {
   baseModelType?: string;
   finetune: boolean;
   availability: WanGPAvailability;
+  textToVideo: boolean;
   imageToVideo: boolean;
   tags: string[];
   profileDirectories: string[];
@@ -133,6 +134,7 @@ const deriveTags = (value: unknown): string[] => {
   const text = normalizeTagText(value);
   const tags: string[] = [];
   const add = (tag: string, pattern: RegExp) => { if (pattern.test(text)) tags.push(tag); };
+  add('text-to-video', /text.?to.?video|text2video|textimage2video|\bti2v\b|\bt2v\b/);
   add('image-to-video', /image.?to.?video|image2video|\bi2v\b|textimage2video/);
   add('wan-2.2', /wan\s*2[.]?2|wan2\s*2/);
   add('fun-inp', /fun\s*inp/);
@@ -211,10 +213,37 @@ const imageToVideoFrom = (raw: UnknownRecord): boolean => {
     || (Object.keys(capabilities).length === 0 && Object.keys(mediaInputs).length === 0);
 };
 
+const textToVideoFrom = (
+  raw: UnknownRecord,
+  schema: UnknownRecord,
+  defaultSettings: UnknownRecord,
+  metadata: UnknownRecord,
+): boolean => {
+  const capabilities = isRecord(raw.capabilities) ? raw.capabilities : {};
+  const mediaInputs = isRecord(raw.media_inputs) ? raw.media_inputs : {};
+  const textInput = mediaInputs.text;
+  const promptTypes = collectNamedValues(
+    {raw, schema, defaultSettings, metadata},
+    /image_prompt_types?_allowed|image_prompt_type/i,
+  ).flatMap(collectStrings);
+  const identity = normalizeTagText({
+    modelType: raw.model_type ?? raw.modelType ?? raw.id,
+    name: raw.name ?? raw.label ?? raw.description,
+    family: raw.family,
+  });
+  return capabilities.text_to_video === true
+    || capabilities.textToVideo === true
+    || textInput === true
+    || (isRecord(textInput) && textInput.prompt !== false)
+    || promptTypes.some((value) => value.toUpperCase().includes('T'))
+    || /text.?to.?video|text2video|textimage2video|\bti2v\b|\bt2v\b/.test(identity);
+};
+
 export const buildWanGPModelCapability = (input: {
   raw: UnknownRecord;
   schema?: UnknownRecord;
   defaultSettings?: UnknownRecord;
+  metadata?: UnknownRecord;
 }): WanGPModelCapability | null => {
   const raw = input.raw;
   const runtimeModelId = asString(raw.model_type ?? raw.modelType ?? raw.id);
@@ -225,13 +254,14 @@ export const buildWanGPModelCapability = (input: {
   const defaultSettings = input.defaultSettings
     ?? (isRecord(schema.default_settings) ? schema.default_settings : {})
     ?? {};
+  const metadata = input.metadata ?? {};
   const frameMinimum = asPositiveInteger(modelDef.frames_minimum);
   const frameStep = asPositiveInteger(modelDef.frames_steps);
   const supportedFrameCounts = [49, 81].filter((frameCount) =>
     frameMinimum === undefined || frameStep === undefined || (
       frameCount >= frameMinimum && (frameCount - frameMinimum) % frameStep === 0
     ));
-  const textSource = {raw, schema, defaultSettings};
+  const textSource = {raw, schema, defaultSettings, metadata};
   // Family, accelerator name and parameter count are identity facts.  Do not
   // infer them from nested checkpoint URLs or unrelated profile defaults,
   // otherwise a 10B model carrying a 5B helper checkpoint can masquerade as
@@ -268,6 +298,7 @@ export const buildWanGPModelCapability = (input: {
     ...(baseModelType === undefined ? {} : {baseModelType}),
     finetune: raw.finetune === true,
     availability: availabilityFrom(raw.availability ?? raw.status),
+    textToVideo: textToVideoFrom(raw, schema, defaultSettings, metadata),
     imageToVideo: imageToVideoFrom(raw),
     tags,
     profileDirectories: profileDirectoriesFrom(schema),
@@ -347,7 +378,7 @@ type ModelProfileOption = {model: WanGPModelCapability; profile?: WanGPAccelerat
 
 const optionScore = (option: ModelProfileOption, tier: WanGPLocalTier): number => {
   const {model, profile} = option;
-  if (!model.imageToVideo || !modelIsRtx30Compatible(model)) return Number.NEGATIVE_INFINITY;
+  if ((!model.textToVideo && !model.imageToVideo) || !modelIsRtx30Compatible(model)) return Number.NEGATIVE_INFINITY;
   let score = availabilityScore(model.availability);
   const has = (name: string) => tag(model, name) || (profile !== undefined && tag(profile, name));
   if (model.quantization.includes('int8') || model.quantization.includes('gguf')) score += 12;
@@ -375,7 +406,7 @@ const optionScore = (option: ModelProfileOption, tier: WanGPLocalTier): number =
 
 const optionPriority = (option: ModelProfileOption, tier: WanGPLocalTier): number => {
   const {model, profile} = option;
-  if (!model.imageToVideo || !modelIsRtx30Compatible(model)) return -1;
+  if ((!model.textToVideo && !model.imageToVideo) || !modelIsRtx30Compatible(model)) return -1;
   const has = (name: string) => tag(model, name) || (profile !== undefined && tag(profile, name));
   if (tier === 'ultra-preview') {
     if (has('self-forcing') && (profile?.steps === 2 || model.defaultSteps === 2 || has('two-step'))) return 4;
@@ -433,7 +464,7 @@ export const resolveWanGPCachePolicy = (input: {
 
 const tierReason = (tier: WanGPLocalTier, option: ModelProfileOption): string => {
   const profile = option.profile ? ` + ${option.profile.label}` : '';
-  if (tier === 'ultra-preview') return `Lowest-parameter compatible I2V fallback: ${option.model.label}${profile}.`;
+  if (tier === 'ultra-preview') return `Lowest-parameter compatible local video fallback: ${option.model.label}${profile}.`;
   if (tier === 'balanced-local') return `RTX 30 balanced metadata match: ${option.model.label}${profile}.`;
   return `Highest-priority distilled quality metadata match: ${option.model.label}${profile}.`;
 };

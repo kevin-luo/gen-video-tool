@@ -3,12 +3,13 @@
 ## Contents
 
 1. [Source tree](#source-tree)
-2. [Canonical example](#canonical-example)
-3. [Delivery and generation clocks](#delivery-and-generation-clocks)
-4. [Conditioning modes](#conditioning-modes)
-5. [World constraints](#world-constraints)
-6. [Occlusion](#occlusion)
-7. [Cross-file rules](#cross-file-rules)
+2. [Default paper-collage contract](#default-paper-collage-contract)
+3. [Optional realistic example](#optional-realistic-example)
+4. [Delivery and generation clocks](#delivery-and-generation-clocks)
+5. [Conditioning modes](#conditioning-modes)
+6. [World constraints](#world-constraints)
+7. [Occlusion](#occlusion)
+8. [Cross-file rules](#cross-file-rules)
 
 `production.json` is the only immutable project entry contract. The v3 source
 pack has no v2 manifest and no per-shot compatibility JSON. The desktop owns
@@ -23,10 +24,12 @@ narration.segments.json
 subtitles.srt
 assets/
   voices/narrator.wav
-  shots/<shot-id>/performance-start.png
-  shots/<shot-id>/performance-end.png       # only for supported start-end mode
-  shots/<shot-id>/<deterministic-prop>.png
-  shots/<shot-id>/foreground-occluder.png   # only when declared
+  shots/<shot-id>/background.png            # default paper mode
+  shots/<shot-id>/<paper-group>.png          # default paper mode, transparent
+  shots/<shot-id>/performance-start.png      # optional realistic mode
+  shots/<shot-id>/performance-end.png        # optional supported start-end mode
+  shots/<shot-id>/<deterministic-prop>.png   # optional realistic mode
+  shots/<shot-id>/foreground-occluder.png    # optional realistic mode
 ```
 
 Never include `generated/` in a source ZIP. The desktop may later create:
@@ -45,7 +48,115 @@ All JSON paths use POSIX separators and are relative to the project root. Reject
 drive letters, a root slash, backslashes, URLs, colon separators, dot segments,
 empty segments, Windows device names, and segments ending in a dot or space.
 
-## Canonical example
+## Default paper-collage contract
+
+Use only `layered-collage` shots unless the user explicitly requests realistic
+continuous motion. A paper shot starts with exactly one static background and
+assembles 3–6 transparent non-background groups. Every non-background group has
+one `assembly` object and remains rigid: Remotion may translate, rotate, scale
+uniformly, or change visibility, but it never regenerates or warps the pixels.
+
+```json
+{
+  "shotId": "shot-01",
+  "kind": "layered-collage",
+  "deliveryTimeline": {"startFrame": 0, "durationFrames": 150},
+  "layers": [
+    {
+      "id": "paper-field",
+      "assetPath": "assets/shots/shot-01/background.png",
+      "role": "background",
+      "zIndex": 0,
+      "transform": {
+        "x": 0,
+        "y": 0,
+        "scaleX": 1,
+        "scaleY": 1,
+        "rotationDegrees": 0,
+        "opacity": 1
+      },
+      "motionPreset": "locked"
+    },
+    {
+      "id": "whole-actor",
+      "assetPath": "assets/shots/shot-01/actor-complete.png",
+      "role": "actor",
+      "zIndex": 310,
+      "transform": {
+        "x": 470,
+        "y": 1240,
+        "scaleX": 1,
+        "scaleY": 1,
+        "rotationDegrees": 0,
+        "opacity": 1
+      },
+      "assembly": {
+        "kind": "rise",
+        "startFrame": 36,
+        "durationFrames": 30,
+        "distance": 680,
+        "rotationDegrees": -4,
+        "steps": 10,
+        "followThrough": {
+          "kind": "gesture-right",
+          "delayFrames": 12,
+          "durationFrames": 30,
+          "distance": 32,
+          "rotationDegrees": 3,
+          "cadenceFps": 3
+        }
+      }
+    }
+  ],
+  "editorialCamera": {
+    "owner": "editorial-camera",
+    "operation": "locked",
+    "strength": 0
+  }
+}
+```
+
+The example above abbreviates the remaining groups. A complete shot must have
+3–6 non-background groups and at least three distinct `startFrame` values. Use
+one of these assembly kinds:
+
+- `slide-left`, `slide-right`, `slide-up`, `drop`, `rise`;
+- `snap`, `slap`, `stamp`, `pop`.
+
+Assembly fields are strict: `startFrame` is a non-negative shot-local delivery
+frame; `durationFrames` is 1..3600; `distance` is 0..4000 delivery pixels;
+`rotationDegrees` is -45..45; and `steps` is 2..24. Assembly must finish inside
+the shot and leave at least six frames for the completed hold. Backgrounds may
+not assemble. A layer with assembly may omit `motionPreset` or set it to
+`locked`, but may not use a looping preset.
+
+`followThrough` is optional and strict. It describes one finite whole-PNG
+action after assembly settles, never a loop or body-part puppet. Its fields are:
+
+- `kind`: `bob`, `sway`, `gesture-left`, `gesture-right`, `exit-left`, or
+  `exit-right`;
+- `delayFrames`: integer 0..3600 after assembly settle;
+- `durationFrames`: integer 8..3600;
+- `distance`: 0..4000 delivery pixels, capped at 120 for non-exit actions;
+- `rotationDegrees`: -15..15, capped to an absolute 8 degrees for non-exits;
+- `cadenceFps`: exactly 2, 3, or 4 discrete placements per second.
+
+Bob, sway, and gesture return exactly to the authored transform. Exit holds the
+complete card invisibly at its final offstage transform. In both cases the
+action must finish with at least six exact still frames left in the shot. Do
+not encode breathing, ambient sway, repeated bobbing, slow drift, or any other
+permanent idle. Use the cue only for a short narrative emphasis or deliberate
+exit; omit it when assembly already carries the beat.
+
+Keep `scaleX` equal to `scaleY` for every paper group. Actor and animal assets
+must be complete uninterrupted RGBA cutouts. Environment, actor, prop,
+foreground and overlay groups all require transparent PNGs so the empty field,
+z-order and occlusion remain observable.
+
+The default paper template is `assets/paper-template/`. It requires only
+`local-f5-tts`, `remotion-render`, `ffmpeg`, and `sidecar-srt` capabilities.
+
+## Optional realistic example
 
 This one-shot example uses the locally available start-only WanGP path. Every
 milestone and deterministic coordinate is expressed in the 1080×1920, 30 fps

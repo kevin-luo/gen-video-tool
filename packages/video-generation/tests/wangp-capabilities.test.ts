@@ -62,6 +62,54 @@ const profile = (directory: string, label: string, steps: number) => buildWanGPA
 });
 
 describe('WanGP dynamic capability matching', () => {
+  it('discovers text-only and hybrid text/image generation capabilities', () => {
+    const textOnly = buildWanGPModelCapability({
+      raw: {
+        model_type: 'opaque-t2v',
+        name: 'Wan text-to-video',
+        availability: {status: 'available'},
+        capabilities: {text_to_video: true},
+        media_inputs: {text: {prompt: true}},
+      },
+    });
+    const hybrid = buildWanGPModelCapability({
+      raw: {
+        model_type: 'opaque-ti2v',
+        name: 'Wan TextImage2video FastWan 5B',
+        availability: {status: 'available'},
+        capabilities: {image_to_video: true},
+        media_inputs: {image: {start: true}},
+      },
+      schema: {image_prompt_types_allowed: 'TSVL'},
+    });
+
+    expect(textOnly).toMatchObject({textToVideo: true, imageToVideo: false});
+    expect(textOnly?.tags).toContain('text-to-video');
+    expect(hybrid).toMatchObject({textToVideo: true, imageToVideo: true});
+    expect(hybrid?.tags).toEqual(expect.arrayContaining(['text-to-video', 'image-to-video']));
+  });
+
+  it('keeps a text-only FastWan model eligible for local creator tiers', () => {
+    const textOnly = buildWanGPModelCapability({
+      raw: {
+        model_type: 'opaque-fastwan-t2v',
+        name: 'Wan2.2 Text-to-Video FastWan 5B',
+        availability: {status: 'available'},
+        capabilities: {text_to_video: true},
+        media_inputs: {text: {prompt: true}},
+      },
+      schema: {model_def: {frames_minimum: 5, frames_steps: 4}},
+      defaultSettings: {num_inference_steps: 3, guidance_scale: 1},
+    })!;
+
+    const catalog = buildWanGPCapabilityCatalog({models: [textOnly], profiles: []});
+    expect(catalog.tiers.find((tier) => tier.tier === 'balanced-local')).toMatchObject({
+      modelRuntimeId: 'opaque-fastwan-t2v',
+      available: true,
+      steps: 3,
+    });
+  });
+
   it('matches the three local tiers from metadata without relying on internal IDs', () => {
     const models = [
       model({runtimeModelId: 'opaque-a7', name: 'Fun InP image2video 1.3B', steps: 20}),

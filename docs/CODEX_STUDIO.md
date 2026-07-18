@@ -1,6 +1,6 @@
 # Codex Studio
 
-Codex Studio 把 Gen Video Tool 的 v3 本地生产链路变成一个可安装的 Codex 插件。它采用“对话导演 + 窄 MCP 工具 + localhost 可视制作台”三层结构：Codex 负责文案、镜头和 Imagegen 源资产，本机负责 WanGP、F5-TTS、Remotion 与 FFmpeg，用户在浏览器中审片和控制任务。
+Codex Studio 把 Gen Video Tool 的本地生产链路变成一个可安装的 Codex 插件。默认视觉合同是 paper-collage：文案拆成 narration-aligned beat 和视觉隐喻，准备完整角色与每镜 3–6 个纸片组，再由 Remotion 确定性组装，F5-TTS 生成旁白，FFmpeg 完成编码与抽帧 QA，最后交付 MP4 与外挂 SRT。Wan 只用于用户显式选择的写实连续视频，或合适的无人物背景底板。
 
 ## 安装
 
@@ -21,52 +21,65 @@ codex plugin add gen-video-tool@gen-video-tool
 
 | 层 | 负责 | 不负责 |
 | --- | --- | --- |
-| Codex Skill | 理解需求、文案、镜头、世界/物理约束、Imagegen 资产、选择下一步 | 不伪造模型成功，不自动代替用户审片 |
-| MCP | 项目读取、资产包检查/导入、本地任务、候选选择/拒绝 | 不接受任意 shell，不向云端上传素材 |
-| localhost 制作台 | 项目状态、实际媒体预览、门禁、任务日志、人工操作 | 不读取 Cookie、订阅 Token 或对话历史 |
-| 本地生产包 | WanGP、F5-TTS、Remotion、FFmpeg、媒体 QA | 不用静态首帧冒充连续视频 |
+| Codex Skill | 文案分 beat/隐喻、调用内置 Imagegen 生成完整角色与纸片组、导入资产包、跟踪本地任务 | 不伪造模型成功或媒体路径 |
+| MCP | 创作创建/重试、项目读取、资产包导入、本地任务、候选审片 | 不接受任意 shell，不向云端上传素材 |
+| localhost 制作台 | 保存创作请求、显示真实任务/媒体状态、接受已配置 Provider 或用户资产包 | 不调用 Codex Imagegen，不读取 Cookie、订阅 Token 或对话历史 |
+| 本地生产包 | 纸片组装、F5-TTS、Remotion、FFmpeg、媒体 QA；可选 WanGP | 不用占位图或静态首帧冒充成片 |
 
 ## MCP 工具
 
-插件暴露 14 个窄工具：
+插件暴露 20 个窄工具：
 
+- 一键创作：`gen_video_create_from_script`、`gen_video_list_creations`、`gen_video_get_creation`、`gen_video_retry_creation`；
+- 纸片资产：`gen_video_inspect_collage_assets`、`gen_video_attach_collage_assets`；
 - 状态：`gen_video_get_status`、`gen_video_list_projects`、`gen_video_get_project`；
 - 资产包：`gen_video_inspect_asset_pack`、`gen_video_import_asset_pack`；
 - 长任务：`gen_video_detect_runtime`、`gen_video_generate_shot`、`gen_video_synthesize_narration`、`gen_video_render_project`；
 - 任务控制：`gen_video_get_job`、`gen_video_list_jobs`、`gen_video_cancel_job`；
 - 人工审片：`gen_video_select_candidate`、`gen_video_reject_candidate`。
 
-检测、生成、旁白和渲染都是异步任务。启动工具立即返回任务 ID；Skill 通过 `gen_video_get_job` 跟踪到 `complete`、`failed`、`cancelled` 或 `interrupted`。同一项目/镜头的等价任务在排队或运行时不会重复创建。
+`gen_video_create_from_script` 只创建 `awaiting-assets` 请求，不会启动 Wan 或伪造视频。`gen_video_inspect_collage_assets` 只读校验本地 v3 pack；`gen_video_attach_collage_assets` 原子附加通过校验且时长匹配的 `layered-collage` pack，并排队 F5-TTS 与 Remotion/FFmpeg。Skill 随后通过 `gen_video_get_creation`，必要时通过 `gen_video_get_job`，跟踪到 `complete`、`failed`、`cancelled` 或 `interrupted`。
 
 ## 从一句话到视频
 
-推荐对话：
+最快的推荐对话：
 
 ```text
-做一条 20 秒 9:16 视频：可爱小猫在夜市摆摊卖炒粉。
-文案口语化；先写动作轴、支撑面、接触时序和单一运镜。
-用 Codex 内置 Imagegen 生成完整首尾关键帧和透明确定性道具，
-导入后用本地 WanGP 逐镜头生成候选。每个候选让我审片，
-全部通过后用 F5-TTS 生成旁白，再渲染 MP4 + 外挂 SRT。
+把下面文案做成 20 秒抖音竖屏纸片拼贴视频：
+“夜市快收摊时，一只小猫还在认真翻炒最后一份炒粉……”
+小猫必须是一张完整角色纸片；每镜 3–6 个大组从空场错峰组装。
 不要 BGM，不要烧录字幕。
 ```
 
 实际顺序：
 
 ```text
-文案/镜头/世界契约
--> $create-gen-video-asset-pack + 内置 Imagegen
--> 资产包检查与原子导入
--> WanGP 运行时检测
--> 单 Seed 候选生成
--> 技术 QA
--> 用户在 localhost 制作台看实际视频并接受/拒绝
--> F5-TTS
--> Remotion + FFmpeg
+成稿文案 + 平台 + 时长
+-> gen_video_create_from_script（状态：awaiting-assets）
+-> narration-aligned beat + 一句话视觉隐喻
+-> Imagegen 完整角色 + 每镜 3–6 个透明纸片组
+-> v3 layered-collage 资产包
+-> gen_video_inspect_collage_assets
+-> gen_video_attach_collage_assets
+-> Remotion slide / snap / stamp / settle + 明确 z-order/遮挡
+-> F5-TTS 旁白
+-> Remotion 渲染 + FFmpeg 抽帧/编码 QA
 -> MP4 + 外挂 SRT
 ```
 
-生成动作不会自动替用户选择候选。拒绝后可再次生成计划中的下一个不可变 Seed；所有连续表演镜头都有通过候选后才解锁旁白，旁白完成后才解锁渲染。
+工具调用顺序固定为：`create_from_script → Imagegen/图片 Provider 资产包 → inspect_collage_assets → attach_collage_assets → get_creation poll`。attach 之前 creation 不进入旁白或渲染阶段。
+
+角色或动物必须保持一张完整透明 PNG，只允许平移、旋转和缩放；不得拆手脚、网格形变或在 settle 后恢复漂浮。环境、主体、道具和前景按显式 z-order 合成，前景遮挡环境层而不是切开角色。
+
+## Imagegen 与独立运行边界
+
+localhost 页面与 MCP 服务无法直接调用 Codex 内置 Imagegen。它们也不能借用 ChatGPT Cookie、订阅 Token、浏览器登录态或授权 JSON。
+
+- 在 Codex 对话中：先创建 creation，再由 Codex 调用内置 Imagegen，检查素材后保存为本地 v3 `layered-collage` pack，通过 collage inspect 后 attach 到该 creation。
+- 独立 localhost/Electron 模式：必须配置图片 Provider，或让用户导入已生成的资产包。
+- 两者都没有时：任务应停在图片资产阶段并返回明确下一步，不能回退到 Wan 视频、占位图或伪进度。
+
+WanGP 是可选写实路径。只有用户明确要求自然关节表演、连续写实镜头或无人物背景生成时才运行检测和候选工作流；它不拥有默认纸片角色的运动。
 
 ## 安全边界
 
@@ -97,6 +110,7 @@ npm test
 
 - 制作台打不开：检查 Codex 任务中的插件启动日志和端口占用；不要手工复用旧 session URL；
 - 页面显示未连接：从当前 Codex 任务重新获取 `studioUrl`，会话令牌随插件进程变化；
-- 检测失败：先运行 `npm run local:production:detect -- <项目目录>`，检查 WanGP Python、CUDA 和模型 availability；
-- 生成失败：读取对应任务的最后日志和候选技术 QA，不要回退到静态图片；
+- 图片资产阶段阻塞：在 Codex 对话中生成并导入资产包，或为独立模式配置图片 Provider；
+- 可选 Wan 检测失败：先运行 `npm run local:production:detect -- <项目目录>`，检查 WanGP Python、CUDA 和模型 availability；
+- 生成失败：读取对应任务的最后日志和媒体 QA，不要回退到占位图或静态首帧；
 - 重启后任务中断：这是显式恢复语义，确认本机模型状态后重新发起该步骤。

@@ -1,4 +1,4 @@
 interface:
   display_name: "Create Gen Video Asset Pack"
-  short_description: "生成可导入并完全离线执行的 Gen Video Tool v3 资产包"
-  default_prompt: "Use $create-gen-video-asset-pack to create a validated v3 production ZIP for fully local desktop video generation."
+  short_description: "默认生成确定性纸片组装包，也支持显式 Wan 写实包"
+  default_prompt: "Use $create-gen-video-asset-pack to create a validated v3 paper-collage production ZIP with complete transparent cutouts, staggered rigid assembly, F5-TTS narration, and external SRT. Use Wan only if I explicitly request realistic continuous video."

@@ -18,9 +18,17 @@ export type VideoGenerationStatus =
 export type VideoGenerationInput = {
   projectId: string;
   shotId: string;
-  /** Complete, text-free performance plate at frame 0. Causal props may be composited later. */
-  keyframePath: string;
-  /** Optional complete performance plate for the last frame, when the selected model supports it. */
+  /**
+   * Optional complete, text-free performance plate at frame 0.  Omitting it
+   * requests text-to-video generation; providing it requests image-to-video.
+   * Causal props may be composited later.
+   */
+  keyframePath?: string;
+  /**
+   * Optional complete performance plate for the last frame, when the selected
+   * model supports it.  An end keyframe is only valid together with a start
+   * keyframe.
+   */
   endKeyframePath?: string;
   prompt: string;
   negativePrompt?: string;

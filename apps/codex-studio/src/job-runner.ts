@@ -6,7 +6,12 @@ import path from 'node:path';
 import type {StudioConfig} from './config.js';
 import {assertSafeId} from './path-safety.js';
 
-export type StudioJobAction = 'detect-runtime' | 'generate-shot' | 'synthesize-narration' | 'render-project';
+export type StudioJobAction =
+  | 'detect-runtime'
+  | 'generate-shot'
+  | 'synthesize-narration'
+  | 'render-project'
+  | 'produce-video';
 export type StudioJobStatus = 'queued' | 'running' | 'complete' | 'failed' | 'cancelled' | 'interrupted';
 
 export interface StudioJobLog {
@@ -37,13 +42,25 @@ export interface JobCommand {
 }
 
 export const buildJobCommand = (
-  config: Pick<StudioConfig, 'repositoryRoot' | 'projectsRoot' | 'outputRoot'>,
+  config: Pick<StudioConfig, 'repositoryRoot' | 'dataRoot' | 'projectsRoot' | 'outputRoot'>,
   job: Pick<StudioJob, 'action' | 'projectId' | 'shotId'>,
   executable = process.execPath,
 ): JobCommand => {
   const projectId = assertSafeId(job.projectId, 'PROJECT_ID');
   const projectRoot = path.join(config.projectsRoot, projectId);
   const tsxCli = path.join(config.repositoryRoot, 'node_modules', 'tsx', 'dist', 'cli.mjs');
+  if (job.action === 'produce-video') {
+    return {
+      executable,
+      cwd: config.repositoryRoot,
+      args: [
+        tsxCli,
+        path.join(config.repositoryRoot, 'scripts', 'paper-collage-production.ts'),
+        path.join(config.dataRoot, 'creations', projectId),
+        path.join(config.outputRoot, projectId),
+      ],
+    };
+  }
   if (job.action === 'detect-runtime') {
     return {
       executable,
@@ -71,16 +88,21 @@ export const buildJobCommand = (
 };
 
 export const parseJobProgress = (line: string, current: number): number => {
-  const percent = line.match(/\b(\d{1,3})%/u)?.[1];
-  if (percent !== undefined) return Math.max(current, Math.min(0.98, Number(percent) / 100));
   try {
     const event = JSON.parse(line) as {event?: string; progress?: number};
-    if (event.event === 'render-progress' && typeof event.progress === 'number') {
+    if (
+      (event.event === 'render-progress'
+        || event.event === 'quick-progress'
+        || event.event === 'paper-collage-progress')
+      && typeof event.progress === 'number'
+    ) {
       return Math.max(current, Math.min(0.98, event.progress));
     }
   } catch {
     // Human-readable provider logs are expected.
   }
+  const percent = line.match(/\b(\d{1,3})%/u)?.[1];
+  if (percent !== undefined) return Math.max(current, Math.min(0.98, Number(percent) / 100));
   return current;
 };
 
@@ -92,6 +114,13 @@ export const tryParseJobResult = (stdout: string): unknown => {
     try { return JSON.parse(trimmed.slice(cursor + 1)) as unknown; } catch { /* Continue to the previous object. */ }
   }
   return {output: trimmed.slice(-16_000)};
+};
+
+export const meaningfulJobError = (logs: readonly StudioJobLog[], fallback: string): string => {
+  const stderr = [...logs].reverse().filter((entry) => entry.stream === 'stderr');
+  return stderr.find((entry) => !/^\s*at\s/u.test(entry.text) && !/^Node\.js\s/u.test(entry.text))?.text
+    ?? stderr[0]?.text
+    ?? fallback;
 };
 
 export class StudioJobRunner {
@@ -232,8 +261,7 @@ export class StudioJobRunner {
     } else {
       job.status = 'failed';
       job.finishedAt = finishedAt;
-      job.error = job.logs.filter((entry) => entry.stream === 'stderr').at(-1)?.text
-        ?? `Process exited with code ${String(exit.code)}.`;
+      job.error = meaningfulJobError(job.logs, `Process exited with code ${String(exit.code)}.`);
       job.logs.push({at: finishedAt, stream: 'system', text: job.error});
     }
     await this.persist();

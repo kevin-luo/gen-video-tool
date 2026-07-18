@@ -188,15 +188,47 @@ const collageShot = () => ({
       motionPreset: 'locked',
     },
     {
+      id: 'structure',
+      assetPath: 'assets/shots/shot-01/structure.png',
+      role: 'midground',
+      zIndex: 100,
+      transform: {x: 540, y: 1080, scaleX: 1, scaleY: 1, rotationDegrees: 0, opacity: 1},
+      assembly: {kind: 'slide-left', startFrame: 2, durationFrames: 12, distance: 700, rotationDegrees: 4, steps: 6},
+    },
+    {
       id: 'hero',
       assetPath: 'assets/shots/shot-01/hero.png',
       role: 'actor',
-      zIndex: 10,
+      zIndex: 300,
       transform: {x: 540, y: 1100, scaleX: 1, scaleY: 1, rotationDegrees: 0, opacity: 1},
-      motionPreset: 'paper-sway',
+      assembly: {kind: 'rise', startFrame: 18, durationFrames: 12, distance: 560, rotationDegrees: -4, steps: 6},
+    },
+    {
+      id: 'prop',
+      assetPath: 'assets/shots/shot-01/prop.png',
+      role: 'prop',
+      zIndex: 410,
+      transform: {x: 680, y: 1180, scaleX: 1, scaleY: 1, rotationDegrees: 0, opacity: 1},
+      assembly: {kind: 'slide-right', startFrame: 34, durationFrames: 12, distance: 620, rotationDegrees: 3, steps: 6},
+    },
+    {
+      id: 'foreground',
+      assetPath: 'assets/shots/shot-01/foreground.png',
+      role: 'foreground',
+      zIndex: 520,
+      transform: {x: 540, y: 1540, scaleX: 1, scaleY: 1, rotationDegrees: 0, opacity: 1},
+      assembly: {kind: 'rise', startFrame: 50, durationFrames: 12, distance: 480, rotationDegrees: -2, steps: 6},
+    },
+    {
+      id: 'accent',
+      assetPath: 'assets/shots/shot-01/accent.png',
+      role: 'overlay',
+      zIndex: 610,
+      transform: {x: 780, y: 520, scaleX: 1, scaleY: 1, rotationDegrees: 0, opacity: 1},
+      assembly: {kind: 'stamp', startFrame: 66, durationFrames: 12, distance: 120, rotationDegrees: 6, steps: 6},
     },
   ],
-  editorialCamera: {owner: 'editorial-camera', operation: 'push', strength: 0.08},
+  editorialCamera: {owner: 'editorial-camera', operation: 'locked', strength: 0},
 });
 
 export const writeValidAssetPack = async (
@@ -214,6 +246,9 @@ export const writeValidAssetPack = async (
         create: {width: 1080, height: 1920, channels: 3, background: {r: 80, g: 60, b: 40}},
       }).png().toFile(path.join(root, 'assets', 'shots', 'shot-01', 'background.png')),
       sharp({
+        create: {width: 640, height: 720, channels: 4, background: {r: 50, g: 90, b: 80, alpha: 0.85}},
+      }).png().toFile(path.join(root, 'assets', 'shots', 'shot-01', 'structure.png')),
+      sharp({
         create: {
           width: 320,
           height: 720,
@@ -223,6 +258,15 @@ export const writeValidAssetPack = async (
             : {r: 210, g: 90, b: 50},
         },
       }).png().toFile(path.join(root, 'assets', 'shots', 'shot-01', 'hero.png')),
+      sharp({
+        create: {width: 180, height: 180, channels: 4, background: {r: 230, g: 180, b: 80, alpha: 0.9}},
+      }).png().toFile(path.join(root, 'assets', 'shots', 'shot-01', 'prop.png')),
+      sharp({
+        create: {width: 720, height: 260, channels: 4, background: {r: 90, g: 60, b: 40, alpha: 0.9}},
+      }).png().toFile(path.join(root, 'assets', 'shots', 'shot-01', 'foreground.png')),
+      sharp({
+        create: {width: 160, height: 160, channels: 4, background: {r: 245, g: 220, b: 100, alpha: 0.9}},
+      }).png().toFile(path.join(root, 'assets', 'shots', 'shot-01', 'accent.png')),
     ]);
   } else {
     const width = options.keyframeWidth ?? 480;

@@ -3,106 +3,205 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#f3f1ee" />
-    <title>Gen Video Tool · Codex Studio</title>
+    <meta name="theme-color" content="#f8f6f2" />
+    <title>Gen Video Tool · 一句话生成视频</title>
     <link rel="stylesheet" href="/tokens.css" />
     <link rel="stylesheet" href="/studio.css" />
   </head>
   <body>
-    <a class="skip-link" href="#main-content">跳到制作区</a>
-    <div class="studio-shell">
-      <header class="topbar">
-        <div class="brand-lockup" aria-label="Gen Video Tool">
-          <span class="brand-mark" aria-hidden="true">GV</span>
-          <span><strong>Gen Video Tool</strong><small>Codex Studio</small></span>
-        </div>
-        <div class="topbar-context">
-          <span class="connection"><i aria-hidden="true"></i><span id="connection-label">连接本地制作链路</span></span>
-          <button class="button button-secondary" id="copy-prompt" type="button">复制对话指令</button>
-          <button class="button button-primary" id="refresh" type="button">刷新状态</button>
-        </div>
-      </header>
+    <a class="skip-link" href="#main-content">跳到创作区</a>
 
-      <main id="main-content" class="workspace">
-        <aside class="project-rail" aria-labelledby="projects-title">
-          <div class="rail-heading">
-            <div><h1 id="projects-title">本地项目</h1><p>对话产生计划，本机保存结果。</p></div>
-            <span class="count" id="project-count">0</span>
-          </div>
-          <nav id="project-list" aria-label="视频项目"></nav>
-          <div class="rail-foot">
-            <p>新项目从 Codex 对话生成资产包。制作台不会读取 ChatGPT Cookie 或订阅令牌。</p>
-          </div>
-        </aside>
+    <header class="site-header">
+      <a class="brand" href="#new" aria-label="Gen Video Tool 首页">
+        <span class="brand-mark" aria-hidden="true">GV</span>
+        <strong>Gen Video Tool</strong>
+      </a>
 
-        <section class="production-surface" aria-labelledby="project-title">
-          <div class="production-head">
-            <div>
-              <p class="kicker">当前制作</p>
-              <h2 id="project-title">等待选择项目</h2>
-              <p id="project-meta">选择左侧项目，或在 Codex 中创建一条新视频。</p>
-            </div>
-            <button class="button button-secondary" id="detect-runtime" type="button" disabled>检测本地模型</button>
-          </div>
+      <nav class="primary-nav" aria-label="主导航">
+        <button class="nav-item is-active" type="button" data-view="new" aria-current="page">新建</button>
+        <button class="nav-item" type="button" data-view="works">作品</button>
+      </nav>
 
-          <ol class="production-ribbon" id="production-ribbon" aria-label="视频生产进度">
-            <li data-step="pack"><span>1</span><b>资产包</b><small>等待</small></li>
-            <li data-step="motion"><span>2</span><b>连续画面</b><small>等待</small></li>
-            <li data-step="review"><span>3</span><b>人工审片</b><small>等待</small></li>
-            <li data-step="voice"><span>4</span><b>本地旁白</b><small>等待</small></li>
-            <li data-step="render"><span>5</span><b>成片交付</b><small>等待</small></li>
-          </ol>
+      <div class="header-actions">
+        <span class="local-status" id="local-status" data-ready="false">
+          <i aria-hidden="true"></i>
+          <span id="local-status-label">正在连接本地模型</span>
+        </span>
+        <button class="text-action" id="open-settings" type="button">高级设置</button>
+      </div>
+    </header>
 
-          <div class="creative-workbench">
-            <section class="preview-bay" aria-labelledby="preview-title">
-              <div class="section-line"><h3 id="preview-title">审片画面</h3><span id="preview-label">未载入</span></div>
-              <div class="stage" id="stage">
-                <div class="empty-stage"><span aria-hidden="true">9:16</span><p>候选视频和关键帧会在这里出现。</p></div>
+    <main id="main-content">
+      <section class="creator-view" id="new-view" aria-labelledby="hero-title">
+        <header class="hero-copy">
+          <p class="eyebrow">本地创作，素材不离开电脑</p>
+          <h1 id="hero-title">一句文案，生成一条视频</h1>
+          <p>写下你的创意，完整角色与场景纸片按镜头组装，本机完成配音和成片。</p>
+        </header>
+
+        <section class="creation-card" id="creation-card" data-mode="compose" aria-label="视频创作">
+          <form id="creation-form" novalidate>
+            <div class="script-field">
+              <label class="sr-only" for="script-input">视频文案</label>
+              <textarea
+                id="script-input"
+                name="script"
+                rows="7"
+                maxlength="300"
+                required
+                aria-describedby="script-help script-error"
+                placeholder="例如：夜市快收摊时，一只小猫还在认真翻炒最后一份炒粉……"
+              ></textarea>
+              <div class="script-tools">
+                <label class="import-action" for="script-file">导入文案</label>
+                <input id="script-file" type="file" accept=".txt,text/plain" />
+                <span class="character-count" id="character-count">0 / 300</span>
               </div>
-            </section>
-
-            <section class="shot-workflow" aria-labelledby="shots-title">
-              <div class="section-line"><h3 id="shots-title">镜头与候选</h3><span id="shot-summary">0 个镜头</span></div>
-              <div id="shot-list" class="shot-list">
-                <div class="empty-copy">先从左侧选择一个项目。</div>
-              </div>
-            </section>
-          </div>
-
-          <footer class="delivery-actions" id="delivery-actions" aria-label="旁白和渲染操作">
-            <div><strong>交付门禁</strong><span id="delivery-reason">候选审片完成后才会解锁旁白与渲染。</span></div>
-            <div class="button-row">
-              <button class="button button-secondary" id="start-narration" type="button" disabled>生成旁白</button>
-              <button class="button button-primary" id="start-render" type="button" disabled>渲染 MP4</button>
+              <p class="field-help" id="script-help">按 Ctrl + Enter 直接生成。建议写清主角、地点、动作和结尾。</p>
+              <p class="field-error" id="script-error" role="alert"></p>
             </div>
-          </footer>
+
+            <fieldset class="platform-field">
+              <legend>发布到</legend>
+              <div class="platform-options">
+                <label class="platform-option">
+                  <input type="radio" name="platform" value="douyin" checked />
+                  <span>抖音</span>
+                  <i aria-hidden="true"></i>
+                </label>
+                <label class="platform-option">
+                  <input type="radio" name="platform" value="xiaohongshu" />
+                  <span>小红书</span>
+                  <i aria-hidden="true"></i>
+                </label>
+                <label class="platform-option">
+                  <input type="radio" name="platform" value="wechat-channels" />
+                  <span>视频号</span>
+                  <i aria-hidden="true"></i>
+                </label>
+              </div>
+            </fieldset>
+
+            <button class="settings-summary" id="edit-quick-settings" type="button" aria-label="修改视频设置">
+              <span>竖屏 9:16</span><b aria-hidden="true">·</b>
+              <span>约 <output id="duration-summary">20</output> 秒</span><b aria-hidden="true">·</b>
+              <span id="voice-summary">自动配音</span>
+              <u>修改</u>
+            </button>
+
+            <button class="generate-button" id="generate-button" type="submit">
+              <span class="button-label">生成纸片视频</span>
+              <span class="button-wait" aria-hidden="true">提交中</span>
+            </button>
+          </form>
+
+          <section class="creation-progress" id="creation-progress" aria-labelledby="progress-title" hidden>
+            <div class="progress-copy">
+              <p class="eyebrow" id="progress-kicker">本地制作中</p>
+              <h2 id="progress-title">正在理解文案</h2>
+              <p id="progress-message">准备镜头与本地模型，请保持此页面打开。</p>
+            </div>
+            <div class="progress-track" aria-hidden="true"><i id="progress-fill"></i></div>
+            <div class="progress-meta">
+              <span id="progress-stage">拆解脚本</span>
+              <strong id="progress-percent">0%</strong>
+            </div>
+            <ol class="progress-steps" aria-label="制作步骤">
+              <li data-step="script">理解文案</li>
+              <li data-step="visual">准备纸片</li>
+              <li data-step="voice">合成配音</li>
+              <li data-step="render">组装成片</li>
+            </ol>
+            <button class="quiet-button" id="leave-progress" type="button">返回继续创作</button>
+          </section>
+
+          <section class="creation-result" id="creation-result" aria-labelledby="result-title" hidden>
+            <div class="result-player" id="result-player"></div>
+            <div class="result-copy">
+              <p class="eyebrow">生成完成</p>
+              <h2 id="result-title">视频已保存在本地</h2>
+              <p id="result-message">成片不含烧录字幕和背景音乐，外挂字幕会单独保存。</p>
+              <div class="result-actions">
+                <a class="primary-link" id="download-video" href="#" download>下载 MP4</a>
+                <a class="secondary-link" id="download-srt" href="#" download hidden>下载 SRT</a>
+                <button class="secondary-link" id="create-another" type="button">再做一条</button>
+              </div>
+            </div>
+          </section>
+
+          <section class="creation-failure" id="creation-failure" aria-labelledby="failure-title" hidden>
+            <p class="eyebrow">生成未完成</p>
+            <h2 id="failure-title">这次没有生成成功</h2>
+            <p id="failure-message">本地模型返回了错误，文案和设置已经保留。</p>
+            <div class="result-actions">
+              <button class="generate-button compact" id="retry-creation" type="button">重新生成</button>
+              <button class="secondary-link" id="copy-asset-request" type="button" hidden>复制到 Codex 继续</button>
+              <button class="secondary-link" id="back-to-script" type="button">修改文案</button>
+            </div>
+          </section>
         </section>
 
-        <aside class="activity-rail" aria-labelledby="activity-title">
-          <div class="activity-heading">
-            <div><p class="kicker">Local queue</p><h2 id="activity-title">执行记录</h2></div>
-            <span id="active-job-count">0 进行中</span>
+        <section class="recent-section" aria-labelledby="recent-title">
+          <div class="section-heading">
+            <h2 id="recent-title">最近作品</h2>
+            <button class="inline-action" type="button" data-view="works">查看全部</button>
           </div>
-          <div id="job-list" class="job-list">
-            <div class="empty-copy">还没有本地任务。</div>
+          <div class="works-grid recent-grid" id="recent-works" aria-live="polite">
+            <div class="empty-state">正在读取本地作品……</div>
           </div>
-        </aside>
-      </main>
-    </div>
-    <dialog class="review-dialog" id="review-dialog" aria-labelledby="review-title">
-      <form id="review-form">
-        <p class="kicker">Human review</p>
-        <h2 id="review-title">记录审片决定</h2>
-        <p id="review-copy">请记录画面中实际可见的判断依据。</p>
-        <label for="review-notes">审片备注</label>
-        <textarea id="review-notes" rows="4" maxlength="4000"></textarea>
-        <div class="review-actions">
-          <button class="button button-secondary" id="review-cancel" type="button">取消</button>
-          <button class="button button-primary" id="review-submit" type="submit">提交决定</button>
+        </section>
+      </section>
+
+      <section class="works-view" id="works-view" aria-labelledby="works-title" hidden>
+        <header class="works-heading">
+          <div><p class="eyebrow">保存在这台电脑</p><h1 id="works-title">我的作品</h1></div>
+          <button class="generate-button compact" type="button" data-view="new">新建视频</button>
+        </header>
+        <div class="works-grid works-library" id="works-library">
+          <div class="empty-state">正在读取本地作品……</div>
+        </div>
+      </section>
+    </main>
+
+    <dialog class="settings-dialog" id="settings-dialog" aria-labelledby="settings-title">
+      <form method="dialog" id="settings-form">
+        <div class="dialog-heading">
+          <div><p class="eyebrow">创作偏好</p><h2 id="settings-title">视频设置</h2></div>
+          <button class="close-button" type="submit" value="cancel" aria-label="关闭设置">关闭</button>
+        </div>
+
+        <label class="setting-row" for="duration-input">
+          <span><strong>视频时长</strong><small>模型会自动安排镜头数量</small></span>
+          <span class="range-value"><output id="duration-output">20</output> 秒</span>
+        </label>
+        <input id="duration-input" type="range" min="20" max="60" step="5" value="20" />
+
+        <label class="switch-row" for="voice-input">
+          <span><strong>自动配音</strong><small>使用本地 F5-TTS，保留外挂 SRT</small></span>
+          <input id="voice-input" type="checkbox" checked />
+        </label>
+
+        <section class="engineering-panel" aria-labelledby="engineering-title">
+          <div class="engineering-heading">
+            <div><p class="eyebrow">工程控制台</p><h3 id="engineering-title">本地运行状态</h3></div>
+            <button class="secondary-link" id="detect-runtime" type="button">重新检测</button>
+          </div>
+          <p id="runtime-detail">打开后将读取本地模型、工程项目和任务队列。</p>
+          <dl class="runtime-stats">
+            <div><dt>已有工程</dt><dd id="project-count">—</dd></div>
+            <div><dt>进行中任务</dt><dd id="job-count">—</dd></div>
+          </dl>
+          <div class="engineering-list" id="engineering-list"></div>
+        </section>
+
+        <div class="dialog-actions">
+          <button class="secondary-link" type="submit" value="cancel">取消</button>
+          <button class="generate-button compact" id="save-settings" type="submit" value="default">保存设置</button>
         </div>
       </form>
     </dialog>
-    <div class="sr-status" id="live-status" role="status" aria-live="polite"></div>
+
+    <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
     <script src="/studio.js" defer></script>
   </body>
 </html>

@@ -1,0 +1,209 @@
+{
+  "schemaVersion": 3,
+  "projectId": "replace-project-id",
+  "metadata": {
+    "title": "替换为项目标题",
+    "locale": "zh-CN"
+  },
+  "networkPolicy": "offline-only",
+  "requiredCapabilities": [
+    "local-f5-tts",
+    "remotion-render",
+    "ffmpeg",
+    "sidecar-srt"
+  ],
+  "delivery": {
+    "raster": {
+      "width": 1080,
+      "height": 1920,
+      "pixelAspectRatio": 1
+    },
+    "timeline": {
+      "fps": 30,
+      "durationFrames": 150
+    },
+    "video": {
+      "path": "generated/final/video.mp4",
+      "codec": "h264",
+      "pixelFormat": "yuv420p"
+    },
+    "audio": {
+      "path": "generated/audio/narration.wav",
+      "sourceFormat": "wav",
+      "muxCodec": "aac",
+      "muxSampleRate": 48000
+    },
+    "subtitles": {
+      "path": "generated/final/video.srt",
+      "format": "srt",
+      "burnIn": false
+    },
+    "bgm": null
+  },
+  "narration": {
+    "engine": "f5-tts-local",
+    "language": "zh-CN",
+    "referenceAudioPath": "assets/voices/narrator.wav",
+    "referenceText": "replace-with-the-exact-verbatim-reference-wav-transcript",
+    "speed": 1,
+    "segments": [
+      {
+        "segmentId": "voice-shot-01",
+        "shotId": "shot-01",
+        "text": "替换为自然口语旁白。",
+        "outputPath": "generated/audio/voice-shot-01.wav"
+      }
+    ],
+    "mergedAudioPath": "generated/audio/narration.wav"
+  },
+  "shots": [
+    {
+      "shotId": "shot-01",
+      "kind": "layered-collage",
+      "deliveryTimeline": {
+        "startFrame": 0,
+        "durationFrames": 150
+      },
+      "layers": [
+        {
+          "id": "paper-field",
+          "assetPath": "assets/shots/shot-01/background.png",
+          "role": "background",
+          "zIndex": 0,
+          "transform": {
+            "x": 0,
+            "y": 0,
+            "scaleX": 1,
+            "scaleY": 1,
+            "rotationDegrees": 0,
+            "opacity": 1
+          },
+          "motionPreset": "locked"
+        },
+        {
+          "id": "structure",
+          "assetPath": "assets/shots/shot-01/structure.png",
+          "role": "midground",
+          "zIndex": 110,
+          "transform": {
+            "x": 540,
+            "y": 1120,
+            "scaleX": 1,
+            "scaleY": 1,
+            "rotationDegrees": 0,
+            "opacity": 1
+          },
+          "assembly": {
+            "kind": "slide-left",
+            "startFrame": 9,
+            "durationFrames": 30,
+            "distance": 900,
+            "rotationDegrees": 5,
+            "steps": 10
+          }
+        },
+        {
+          "id": "whole-actor",
+          "assetPath": "assets/shots/shot-01/actor-complete.png",
+          "role": "actor",
+          "zIndex": 310,
+          "transform": {
+            "x": 470,
+            "y": 1240,
+            "scaleX": 1,
+            "scaleY": 1,
+            "rotationDegrees": 0,
+            "opacity": 1
+          },
+          "assembly": {
+            "kind": "rise",
+            "startFrame": 36,
+            "durationFrames": 30,
+            "distance": 680,
+            "rotationDegrees": -4,
+            "steps": 10,
+            "followThrough": {
+              "kind": "gesture-right",
+              "delayFrames": 12,
+              "durationFrames": 30,
+              "distance": 32,
+              "rotationDegrees": 3,
+              "cadenceFps": 3
+            }
+          }
+        },
+        {
+          "id": "action-prop",
+          "assetPath": "assets/shots/shot-01/prop.png",
+          "role": "prop",
+          "zIndex": 420,
+          "transform": {
+            "x": 690,
+            "y": 1160,
+            "scaleX": 1,
+            "scaleY": 1,
+            "rotationDegrees": 0,
+            "opacity": 1
+          },
+          "assembly": {
+            "kind": "slide-right",
+            "startFrame": 63,
+            "durationFrames": 27,
+            "distance": 760,
+            "rotationDegrees": 4,
+            "steps": 9
+          }
+        },
+        {
+          "id": "foreground-occluder",
+          "assetPath": "assets/shots/shot-01/foreground.png",
+          "role": "foreground",
+          "zIndex": 520,
+          "transform": {
+            "x": 540,
+            "y": 1580,
+            "scaleX": 1,
+            "scaleY": 1,
+            "rotationDegrees": 0,
+            "opacity": 1
+          },
+          "assembly": {
+            "kind": "rise",
+            "startFrame": 84,
+            "durationFrames": 27,
+            "distance": 520,
+            "rotationDegrees": -3,
+            "steps": 9
+          }
+        },
+        {
+          "id": "accent",
+          "assetPath": "assets/shots/shot-01/accent.png",
+          "role": "overlay",
+          "zIndex": 610,
+          "transform": {
+            "x": 780,
+            "y": 520,
+            "scaleX": 1,
+            "scaleY": 1,
+            "rotationDegrees": 0,
+            "opacity": 1
+          },
+          "assembly": {
+            "kind": "stamp",
+            "startFrame": 108,
+            "durationFrames": 24,
+            "distance": 140,
+            "rotationDegrees": 6,
+            "steps": 8
+          }
+        }
+      ],
+      "editorialCamera": {
+        "owner": "editorial-camera",
+        "operation": "locked",
+        "strength": 0
+      }
+    }
+  ]
+}

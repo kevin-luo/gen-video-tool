@@ -367,5 +367,223 @@ main().catch((error) => { console.error(error); process.exit(1); });
                 self.assertFalse(python_accepts, f"Python validator accepted a plan Zod rejects: {label}")
 
 
+class PaperCollageAssetPackValidatorTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.temporary = tempfile.TemporaryDirectory()
+        self.root = Path(self.temporary.name) / "paper-pack"
+        shutil.copytree(SKILL_ROOT / "assets" / "paper-template", self.root)
+        production_path = self.root / "production.json"
+        production = json.loads(production_path.read_text(encoding="utf-8"))
+        production["projectId"] = "paper-collage-demo"
+        production["metadata"]["title"] = "纸片组装验证"
+        production["narration"]["referenceText"] = "这是用于本地声音克隆的准确参考句子。"
+        spoken = "纸片先搭好场景，小猫再从画外滑进来。"
+        production["narration"]["segments"][0]["text"] = spoken
+        production_path.write_text(
+            json.dumps(production, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+            newline="\n",
+        )
+        (self.root / "narration.segments.json").write_text(
+            json.dumps(
+                {
+                    "segments": [
+                        {
+                            "segmentId": "voice-shot-01",
+                            "shotId": "shot-01",
+                            "text": spoken,
+                            "startSeconds": 0,
+                            "estimatedDurationSeconds": 5,
+                        }
+                    ]
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+            newline="\n",
+        )
+        (self.root / "narration.txt").write_text(spoken + "\n", encoding="utf-8", newline="\n")
+        (self.root / "subtitles.srt").write_text(
+            f"1\n00:00:00,000 --> 00:00:05,000\n{spoken}\n",
+            encoding="utf-8",
+            newline="\n",
+        )
+        for name in (
+            "background.png",
+            "structure.png",
+            "actor-complete.png",
+            "prop.png",
+            "foreground.png",
+            "accent.png",
+        ):
+            write_rgba_png(self.root / "assets" / "shots" / "shot-01" / name, 320, 480)
+        write_reference_wav(self.root / "assets" / "voices" / "narrator.wav")
+
+    def tearDown(self) -> None:
+        self.temporary.cleanup()
+
+    def production(self) -> dict[str, object]:
+        return json.loads((self.root / "production.json").read_text(encoding="utf-8"))
+
+    def write_production(self, value: dict[str, object]) -> None:
+        (self.root / "production.json").write_text(
+            json.dumps(value, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+            newline="\n",
+        )
+
+    def error_codes(self) -> set[str]:
+        return {problem.code for problem in VALIDATOR.validate_path(self.root).errors}
+
+    def test_default_paper_template_passes_after_replacing_placeholders(self) -> None:
+        report = VALIDATOR.validate_path(self.root)
+        self.assertEqual([], report.errors)
+
+    def test_default_paper_template_matches_authoritative_zod_schema(self) -> None:
+        tsx = REPO_ROOT / "node_modules" / ".bin" / ("tsx.cmd" if sys.platform == "win32" else "tsx")
+        schema_module = REPO_ROOT / "packages" / "video-generation" / "src" / "production" / "production-plan.ts"
+        if not tsx.exists() or not schema_module.exists():
+            self.skipTest("repository tsx runtime is unavailable")
+        checker = Path(self.temporary.name) / "paper-zod-check.ts"
+        checker.write_text(
+            """
+import {readFileSync} from 'node:fs';
+import {pathToFileURL} from 'node:url';
+async function main() {
+  const candidate = JSON.parse(readFileSync(process.argv[2], 'utf8'));
+  const module = await import(pathToFileURL(process.argv[3]).href);
+  module.parseProductionPlan(candidate);
+}
+main().catch((error) => { console.error(error); process.exit(1); });
+""".strip()
+            + "\n",
+            encoding="utf-8",
+        )
+        result = subprocess.run(
+            [str(tsx), str(checker), str(self.root / "production.json"), str(schema_module)],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(0, result.returncode, result.stderr)
+
+    def test_all_finite_rigid_paper_follow_through_kinds_are_accepted(self) -> None:
+        original = self.production()
+        for kind in (
+            "bob",
+            "sway",
+            "gesture-left",
+            "gesture-right",
+            "exit-left",
+            "exit-right",
+        ):
+            with self.subTest(kind=kind):
+                production = copy.deepcopy(original)
+                cue = production["shots"][0]["layers"][2]["assembly"]["followThrough"]
+                cue["kind"] = kind
+                if kind.startswith("exit-"):
+                    cue["distance"] = 1_200
+                    cue["rotationDegrees"] = 10
+                self.write_production(production)
+                self.assertEqual([], VALIDATOR.validate_path(self.root).errors)
+
+    def test_follow_through_uses_a_strict_field_and_range_contract(self) -> None:
+        original = self.production()
+        cases = (
+            ("kind", "idle-breathe", "PAPER_FOLLOW_THROUGH_KIND_INVALID"),
+            ("kind", ["sway"], "PAPER_FOLLOW_THROUGH_KIND_INVALID"),
+            ("delayFrames", -1, "PAPER_FOLLOW_THROUGH_DELAY_INVALID"),
+            ("durationFrames", 7, "PAPER_FOLLOW_THROUGH_DURATION_INVALID"),
+            ("distance", 121, "PAPER_FOLLOW_THROUGH_DISTANCE_INVALID"),
+            ("rotationDegrees", 9, "PAPER_FOLLOW_THROUGH_ROTATION_INVALID"),
+            ("cadenceFps", 5, "PAPER_FOLLOW_THROUGH_CADENCE_INVALID"),
+        )
+        for field, value, expected_code in cases:
+            with self.subTest(field=field, value=value):
+                production = copy.deepcopy(original)
+                cue = production["shots"][0]["layers"][2]["assembly"]["followThrough"]
+                cue[field] = value
+                self.write_production(production)
+                self.assertIn(expected_code, self.error_codes())
+
+        production = copy.deepcopy(original)
+        cue = production["shots"][0]["layers"][2]["assembly"]["followThrough"]
+        cue["repeat"] = True
+        self.write_production(production)
+        self.assertIn("FIELD_UNKNOWN", self.error_codes())
+
+    def test_follow_through_must_leave_six_exact_final_hold_frames(self) -> None:
+        production = self.production()
+        cue = production["shots"][0]["layers"][2]["assembly"]["followThrough"]
+        cue["delayFrames"] = 49
+        self.write_production(production)
+
+        codes = self.error_codes()
+        self.assertIn("PAPER_FOLLOW_THROUGH_HOLD_REQUIRED", codes)
+        self.assertIn("PAPER_SETTLE_HOLD_REQUIRED", codes)
+
+    def test_unknown_assembly_kind_is_rejected(self) -> None:
+        production = self.production()
+        production["shots"][0]["layers"][1]["assembly"]["kind"] = "morph"
+        self.write_production(production)
+        self.assertIn("PAPER_ASSEMBLY_KIND_INVALID", self.error_codes())
+
+    def test_background_assembly_and_timeline_overrun_are_rejected(self) -> None:
+        production = self.production()
+        production["shots"][0]["layers"][0]["assembly"] = {
+            "kind": "pop",
+            "startFrame": 0,
+            "durationFrames": 12,
+            "distance": 120,
+            "rotationDegrees": 2,
+            "steps": 6,
+        }
+        production["shots"][0]["layers"][1]["assembly"]["startFrame"] = 140
+        production["shots"][0]["layers"][1]["assembly"]["durationFrames"] = 20
+        self.write_production(production)
+        codes = self.error_codes()
+        self.assertIn("PAPER_BACKGROUND_ASSEMBLY_FORBIDDEN", codes)
+        self.assertIn("PAPER_ASSEMBLY_OUTSIDE_SHOT", codes)
+
+    def test_looping_motion_cannot_resume_after_assembly(self) -> None:
+        production = self.production()
+        production["shots"][0]["layers"][1]["motionPreset"] = "paper-sway"
+        self.write_production(production)
+        self.assertIn("PAPER_ASSEMBLY_MOTION_CONFLICT", self.error_codes())
+
+    def test_non_uniform_paper_scale_is_rejected_as_distortion(self) -> None:
+        production = self.production()
+        production["shots"][0]["layers"][2]["transform"]["scaleY"] = 1.2
+        self.write_production(production)
+        self.assertIn("PAPER_UNIFORM_SCALE_REQUIRED", self.error_codes())
+
+    def test_partial_or_simultaneous_paper_assembly_is_rejected(self) -> None:
+        production = self.production()
+        del production["shots"][0]["layers"][2]["assembly"]
+        for layer in production["shots"][0]["layers"][1:]:
+            if "assembly" in layer:
+                layer["assembly"]["startFrame"] = 12
+        self.write_production(production)
+        codes = self.error_codes()
+        self.assertIn("PAPER_GROUP_ASSEMBLY_REQUIRED", codes)
+        self.assertIn("PAPER_ASSEMBLY_STAGGER_REQUIRED", codes)
+
+    def test_zero_assembly_static_collage_is_rejected(self) -> None:
+        production = self.production()
+        for layer in production["shots"][0]["layers"]:
+            layer.pop("assembly", None)
+        self.write_production(production)
+        codes = self.error_codes()
+        self.assertIn("PAPER_GROUP_ASSEMBLY_REQUIRED", codes)
+        self.assertIn("PAPER_ASSEMBLY_STAGGER_REQUIRED", codes)
+
+    def test_repository_cat_noodle_example_is_a_clean_source_pack(self) -> None:
+        example = REPO_ROOT / "examples" / "cat-noodle-collage-v1"
+        report = VALIDATOR.validate_path(example)
+        self.assertEqual([], report.errors)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -1,0 +1,11 @@
+{
+  "segments": [
+    {
+      "segmentId": "voice-shot-01",
+      "shotId": "shot-01",
+      "text": "替换为自然口语旁白。",
+      "startSeconds": 0,
+      "estimatedDurationSeconds": 5
+    }
+  ]
+}

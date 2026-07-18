@@ -22,7 +22,7 @@ import {
 export type RenderQaFrameSample = {
   /** Global project frame, not the frame local to a shot. */
   frame: number;
-  reasons: Array<'uniform' | 'milestone' | 'contact-adjacent'>;
+  reasons: Array<'uniform' | 'milestone' | 'contact-adjacent' | 'assembly-adjacent'>;
   shotId?: string;
 };
 
@@ -316,7 +316,53 @@ export const buildProjectQaFrameSamples = (
     frame: Math.min(totalFrames - 1, Math.floor(totalFrames * ((index + 0.5) / 12))),
     reasons: ['uniform'],
   }));
+  const addSample = (
+    frame: number,
+    reason: RenderQaFrameSample['reasons'][number],
+    shotId: string,
+  ): void => {
+    if (frame < 0 || frame >= totalFrames) return;
+    const existing = samples.find((item) => item.frame === frame);
+    if (existing) {
+      if (!existing.reasons.includes(reason)) existing.reasons.push(reason);
+      existing.shotId = shotId;
+      return;
+    }
+    samples.push({frame, reasons: [reason], shotId});
+  };
   for (const shot of production.shots) {
+    if (shot.kind === 'layered-collage') {
+      for (const layer of shot.layers) {
+        if (layer.assembly === undefined) continue;
+        const {startFrame, durationFrames} = layer.assembly;
+        const localFrames = new Set([
+          startFrame - 1,
+          startFrame,
+          startFrame + Math.floor(durationFrames / 2),
+          startFrame + durationFrames - 1,
+          startFrame + durationFrames,
+        ]);
+        const followThrough = layer.assembly.followThrough;
+        if (followThrough !== undefined) {
+          const followStart = startFrame + durationFrames + followThrough.delayFrames;
+          const followEnd = followStart + followThrough.durationFrames;
+          localFrames.add(followStart - 1);
+          localFrames.add(followStart);
+          localFrames.add(followStart + Math.floor(followThrough.durationFrames / 2));
+          localFrames.add(followEnd - 1);
+          localFrames.add(followEnd);
+        }
+        for (const localFrame of localFrames) {
+          if (localFrame < 0 || localFrame >= shot.deliveryTimeline.durationFrames) continue;
+          addSample(
+            shot.deliveryTimeline.startFrame + localFrame,
+            'assembly-adjacent',
+            shot.shotId,
+          );
+        }
+      }
+      continue;
+    }
     if (shot.kind === 'generated-performance') {
       const plan = productionShotToHybridMotionPlan(production, shot.shotId);
       const temporal = buildTemporalQaSamples(plan, 12, 2);
@@ -326,15 +372,7 @@ export const buildProjectQaFrameSamples = (
         );
         if (reasons.length === 0) continue;
         const frame = shot.deliveryTimeline.startFrame + sample.frame;
-        const existing = samples.find((item) => item.frame === frame);
-        if (existing) {
-          for (const reason of reasons) {
-            if (!existing.reasons.includes(reason)) existing.reasons.push(reason);
-          }
-          existing.shotId = shot.shotId;
-        } else {
-          samples.push({frame, reasons, shotId: shot.shotId});
-        }
+        for (const reason of reasons) addSample(frame, reason, shot.shotId);
       }
     }
   }

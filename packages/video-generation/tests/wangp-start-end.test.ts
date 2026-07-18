@@ -1,4 +1,4 @@
-import {mkdtemp, rm, writeFile} from 'node:fs/promises';
+import {mkdtemp, rm, stat, writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {afterEach, describe, expect, it} from 'vitest';
@@ -16,7 +16,10 @@ class FakeWanGPTransport implements WanGPMcpClient {
   readonly serverInfo: Readonly<WanGPMcpServerInfo> = {name: 'fake', version: '1'};
   readonly generatedSources: Array<Record<string, unknown>> = [];
 
-  constructor(private readonly supportsEnd: boolean) {}
+  constructor(
+    private readonly supportsEnd: boolean,
+    private readonly supportsText = false,
+  ) {}
 
   async connect(): Promise<void> {}
   async close(): Promise<void> {}
@@ -27,7 +30,9 @@ class FakeWanGPTransport implements WanGPMcpClient {
     if (name === 'wangp_list_models') {
       result = {models: [{model_type: 'fun_inp_1.3B', availability: 'available'}]};
     } else if (name === 'wangp_get_model_metadata') {
-      result = {metadata: {image_prompt_types_allowed: this.supportsEnd ? 'SEVL' : 'SVL'}};
+      result = {metadata: {
+        image_prompt_types_allowed: `${this.supportsText ? 'T' : ''}${this.supportsEnd ? 'SEVL' : 'SVL'}`,
+      }};
     } else if (name === 'wangp_get_default_settings') {
       result = {default_settings: {num_inference_steps: 4}};
     } else if (name === 'wangp_get_model_schema') {
@@ -62,6 +67,55 @@ afterEach(async () => {
 });
 
 describe('WanGP start/end conditioning', () => {
+  it('generates from text without staging image files', async () => {
+    const {root} = await fixture();
+    const transport = new FakeWanGPTransport(false, true);
+    const outputDirectory = path.join(root, 'output');
+    const provider = new WanGPProvider({transport, outputDirectory});
+
+    const job = await provider.submit({
+      projectId: 'project',
+      shotId: 'text-shot',
+      prompt: 'a small cat serves noodles at a warm street stall',
+      width: 480,
+      height: 832,
+      fps: 24,
+      frameCount: 81,
+      presetId: 'local-i2v-fast-portrait',
+    });
+
+    expect(job.status).toBe('running');
+    const source = transport.generatedSources[0]!;
+    expect(source.image_prompt_type).toBe('');
+    expect(source).not.toHaveProperty('image_start');
+    expect(source).not.toHaveProperty('image_end');
+    await expect(stat(path.join(outputDirectory, '.wangp-staging'))).rejects.toMatchObject({code: 'ENOENT'});
+  });
+
+  it('stages one start image and sends the S protocol', async () => {
+    const {root, start} = await fixture();
+    const transport = new FakeWanGPTransport(false);
+    const provider = new WanGPProvider({transport, outputDirectory: path.join(root, 'output')});
+
+    const job = await provider.submit({
+      projectId: 'project',
+      shotId: 'start-shot',
+      keyframePath: start,
+      prompt: 'one continuous full-body action',
+      width: 480,
+      height: 832,
+      fps: 24,
+      frameCount: 81,
+      presetId: 'local-i2v-fast-portrait',
+    });
+
+    expect(job.status).toBe('running');
+    const source = transport.generatedSources[0]!;
+    expect(source.image_prompt_type).toBe('S');
+    expect(path.basename(String(source.image_start))).toBe('start.png');
+    expect(source).not.toHaveProperty('image_end');
+  });
+
   it('stages ASCII-safe start/end files and sends the SE protocol', async () => {
     const {root, start, end} = await fixture();
     const transport = new FakeWanGPTransport(true);
@@ -97,6 +151,25 @@ describe('WanGP start/end conditioning', () => {
       projectId: 'project',
       shotId: 'shot',
       keyframePath: start,
+      endKeyframePath: end,
+      prompt: 'one continuous full-body action',
+      width: 480,
+      height: 832,
+      fps: 24,
+      frameCount: 81,
+      presetId: 'local-i2v-fast-portrait',
+    })).rejects.toMatchObject({code: 'INVALID_REQUEST'});
+    expect(transport.generatedSources).toHaveLength(0);
+  });
+
+  it('rejects an end keyframe without a start keyframe', async () => {
+    const {root, end} = await fixture();
+    const transport = new FakeWanGPTransport(true, true);
+    const provider = new WanGPProvider({transport, outputDirectory: path.join(root, 'output')});
+
+    await expect(provider.submit({
+      projectId: 'project',
+      shotId: 'shot',
       endKeyframePath: end,
       prompt: 'one continuous full-body action',
       width: 480,
