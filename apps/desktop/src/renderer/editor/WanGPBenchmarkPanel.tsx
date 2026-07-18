@@ -90,7 +90,7 @@ export function WanGPBenchmarkPanel({projectId, shotIds, initialShotId, onClose}
                   const isRunning = snapshot.runningTargetId === entry.targetId;
                   return (
                     <tr key={entry.targetId}>
-                      <th scope="row"><strong>{entry.label}</strong><small>{entry.discovered ? `${entry.modelLabel} · ${entry.installed ? '已安装' : '首次运行将下载'}` : '当前 WanGP 未发现'}</small><small>{entry.acceleratorProfileLabel ?? '模型默认加速设置'}</small></th>
+                      <th scope="row"><strong>{entry.label}</strong><small>{entry.discovered ? `${entry.modelLabel} · ${entry.installed ? '已安装' : '未安装，请先准备本地权重'}` : '当前 WanGP 未发现'}</small><small>{entry.acceleratorProfileLabel ?? '模型默认加速设置'}</small></th>
                       {cells.map((value, index) => <td key={index}>{value}</td>)}
                       <td>
                         {entry.outputUrl ? <a className="button button--quiet button--compact" href={entry.outputUrl} target="_blank" rel="noreferrer"><Play size={13} />查看</a> : null}

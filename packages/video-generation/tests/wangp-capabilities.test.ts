@@ -79,7 +79,7 @@ describe('WanGP dynamic capability matching', () => {
       ['quality-local', 'opaque-c9'],
     ]);
     expect(catalog.tiers[0]).toMatchObject({frameCount: 49, candidateCount: 1, memoryProfile: 4, attention: 'auto'});
-    expect(catalog.tiers[1]).toMatchObject({acceleratorProfileLabel: 'FastWan accelerator'});
+    expect(catalog.tiers[1]).not.toHaveProperty('acceleratorProfileId');
     expect(catalog.tiers[2]).toMatchObject({steps: 4, guidance: 1, cachePolicy: {kind: 'off'}});
   });
 
@@ -104,6 +104,89 @@ describe('WanGP dynamic capability matching', () => {
     expect(quality?.quantization).toContain('int8');
   });
 
+  it('prefers a real FastWan finetune over a base 5B model using the same profile', () => {
+    const base = model({
+      runtimeModelId: 'opaque-base-5b',
+      name: 'Wan2.2 TextImage2video 5B',
+      profiles: ['wan-fast'],
+      steps: 20,
+    });
+    const finetune = model({
+      runtimeModelId: 'opaque-fastwan-5b',
+      name: 'Wan2.2 TextImage2video FastWan 5B',
+      profiles: ['wan-fast'],
+      steps: 3,
+    });
+    const catalog = buildWanGPCapabilityCatalog({
+      models: [base, finetune],
+      profiles: [profile('wan-fast', 'FastWan 3 Steps', 3)],
+    });
+
+    expect(catalog.tiers.find((tier) => tier.tier === 'balanced-local')?.modelRuntimeId)
+      .toBe('opaque-fastwan-5b');
+    expect(catalog.tiers.find((tier) => tier.tier === 'balanced-local'))
+      .not.toHaveProperty('acceleratorProfileId');
+  });
+
+  it('uses an installed INT8 LightX quality path instead of FP8 on RTX 30', () => {
+    const fp8Enhanced = model({
+      runtimeModelId: 'opaque-enhanced',
+      name: 'Wan2.2 Image2video Enhanced Lightning v2 14B FP8',
+      steps: 4,
+    });
+    const installedBase = model({
+      runtimeModelId: 'opaque-i2v-int8',
+      name: 'Wan2.1 Image2video 14B INT8',
+      profiles: ['wan-i2v'],
+      steps: 30,
+    });
+    const catalog = buildWanGPCapabilityCatalog({
+      models: [fp8Enhanced, installedBase],
+      profiles: [profile('wan-i2v', 'Image2Video LightX2V 4 Steps', 4)],
+    });
+
+    expect(catalog.tiers.find((tier) => tier.tier === 'quality-local')).toMatchObject({
+      available: true,
+      modelRuntimeId: 'opaque-i2v-int8',
+      acceleratorProfileLabel: 'Image2Video LightX2V 4 Steps',
+      steps: 4,
+    });
+  });
+
+  it('does not apply a 14B accelerator profile to an installed 1.3B model', () => {
+    const preview = model({
+      runtimeModelId: 'opaque-preview',
+      name: 'Fun InP image2video 1.3B',
+      profiles: ['wan-i2v'],
+      steps: 20,
+    });
+    const quality = model({
+      runtimeModelId: 'opaque-quality',
+      name: 'Wan2.1 Image2video 14B INT8',
+      availability: 'missing',
+      profiles: ['wan-i2v'],
+      steps: 30,
+    });
+    const fourteenBLightX = buildWanGPAcceleratorProfile({
+      directory: 'wan-i2v',
+      label: 'Image2Video LightX2V 4 Steps',
+      relativePath: 'wan-i2v/lightx.json',
+      settings: {
+        num_inference_steps: 4,
+        guidance_scale: 1,
+        activated_loras: ['https://example.invalid/Wan21_I2V_14B_lightx2v_lora.safetensors'],
+      },
+      source: 'mcp',
+    });
+    const catalog = buildWanGPCapabilityCatalog({models: [preview, quality], profiles: [fourteenBLightX]});
+
+    expect(catalog.tiers.find((tier) => tier.tier === 'quality-local')).toMatchObject({
+      modelRuntimeId: 'opaque-quality',
+      acceleratorProfileLabel: 'Image2Video LightX2V 4 Steps',
+      available: false,
+    });
+  });
+
   it('enforces cache policy by effective step count and distillation metadata', () => {
     const base = model({runtimeModelId: 'base', name: 'Wan image2video 14B', tea: true, mag: true, steps: 30});
     const distilled = model({runtimeModelId: 'distilled', name: 'Wan Lightning image2video 14B', tea: true, steps: 4});
@@ -118,5 +201,37 @@ describe('WanGP dynamic capability matching', () => {
     expect(capability.supportedResolutions).toContainEqual({width: 480, height: 832});
     expect(capability.supportedFrameCounts).toEqual([49, 81]);
   });
-});
 
+  it('derives main-checkpoint FP8 without inheriting text-encoder INT8/BF16', () => {
+    const capability = buildWanGPModelCapability({
+      raw: {
+        model_type: 'opaque-enhanced',
+        name: 'Wan2.2 Image2video Enhanced Lightning v2 14B',
+        availability: {status: 'missing'},
+        capabilities: {image_to_video: true},
+      },
+      schema: {model_def: {
+        URLs: ['https://example.invalid/wan22EnhancedLightning_v2I2VFP8HIGH.safetensors'],
+        URLs2: ['https://example.invalid/wan22EnhancedLightning_v2I2VFP8LOW.safetensors'],
+        text_encoder_URLs: [
+          'https://example.invalid/models_t5_umt5-xxl-enc-quanto_int8.safetensors',
+          'https://example.invalid/models_t5_umt5-xxl-enc-bf16.safetensors',
+        ],
+      }},
+      defaultSettings: {num_inference_steps: 4, guidance_scale: 1},
+    });
+
+    expect(capability?.quantization).toEqual(['fp8']);
+    expect(capability?.tags).toContain('fp8');
+    expect(capability?.tags).not.toContain('int8');
+    expect(capability?.tags).not.toContain('bf16');
+  });
+
+  it('does not confuse 13B/15B labels with 1.3B/5B tags', () => {
+    const thirteen = model({runtimeModelId: 'thirteen', name: 'Hunyuan Image2video 13B'});
+    const fifteen = model({runtimeModelId: 'fifteen', name: 'Magi Human 15B'});
+
+    expect(thirteen.tags).not.toContain('one-point-three-billion');
+    expect(fifteen.tags).not.toContain('five-billion');
+  });
+});

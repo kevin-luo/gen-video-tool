@@ -22,32 +22,70 @@ const TARGETS: Array<{
   label: string;
   modelTags: string[];
   profileTags: string[];
+  combinedTags?: string[];
 }> = [
   {targetId: 'fun-inp-1.3b', label: 'Fun InP 1.3B', modelTags: ['fun-inp', 'one-point-three-billion'], profileTags: ['self-forcing']},
-  {targetId: 'fastwan-5b', label: 'FastWan 2.2 5B', modelTags: ['fastwan', 'five-billion'], profileTags: ['fastwan']},
-  {targetId: 'enhanced-lightning-14b', label: 'Enhanced Lightning v2 14B', modelTags: ['enhanced-lightning', 'fourteen-billion'], profileTags: ['lightning']},
-  {targetId: 'lightx2v-4step', label: 'LightX2V 4-step', modelTags: ['lightx2v', 'four-step'], profileTags: ['lightx2v']},
+  {targetId: 'fastwan-5b', label: 'FastWan 2.2 5B', modelTags: ['five-billion'], profileTags: ['fastwan'], combinedTags: ['fastwan']},
+  {targetId: 'enhanced-lightning-14b', label: 'Enhanced Lightning v2 14B', modelTags: ['enhanced-lightning', 'fourteen-billion'], profileTags: ['lightning'], combinedTags: ['enhanced-lightning']},
+  {targetId: 'lightx2v-4step', label: 'LightX2V 4-step', modelTags: ['image-to-video', 'fourteen-billion'], profileTags: ['lightx2v', 'four-step'], combinedTags: ['lightx2v', 'four-step']},
 ];
 
 const hasTags = (model: WanGPModelCapability, tags: readonly string[]): boolean =>
   tags.every((tag) => model.tags.includes(tag));
 
+const benchmarkModelSpecializationCount = (
+  model: WanGPModelCapability,
+  requiredTags: readonly string[],
+): number => {
+  const genericTags = new Set([...requiredTags, 'image-to-video', 'int8', 'bf16', 'gguf']);
+  return model.tags.filter((tag) => !genericTags.has(tag)).length;
+};
+
+type BenchmarkOption = {
+  model: WanGPModelCapability;
+  profile?: WanGPCapabilityCatalog['acceleratorProfiles'][number];
+};
+
 export const resolveWanGPBenchmarkTargets = (
   catalog: WanGPCapabilityCatalog,
 ): WanGPBenchmarkTargetSelection[] => TARGETS.map((target) => {
-  const model = catalog.models
-    .filter((candidate) => candidate.imageToVideo && !candidate.tags.includes('nvfp4') && hasTags(candidate, target.modelTags))
+  const options = catalog.models
+    .filter((model) => model.imageToVideo && !model.tags.includes('nvfp4') && hasTags(model, target.modelTags))
+    .flatMap((model) => {
+      const modelCarriesTarget = (target.combinedTags ?? []).length > 0
+        && (target.combinedTags ?? []).every((tag) => model.tags.includes(tag));
+      const compatibleProfiles = catalog.acceleratorProfiles.filter((profile) => (
+        model.profileDirectories.includes(profile.directory)
+        && target.profileTags.every((tag) => profile.tags.includes(tag))
+      ));
+      const candidates: BenchmarkOption[] = [
+        ...(modelCarriesTarget || compatibleProfiles.length === 0 ? [{model}] : []),
+        ...compatibleProfiles.map((profile) => ({model, profile})),
+      ];
+      return candidates.filter(({model: candidateModel, profile}) => {
+        const combined = new Set([...candidateModel.tags, ...(profile?.tags ?? [])]);
+        return (target.combinedTags ?? []).every((tag) => combined.has(tag));
+      });
+    })
     .sort((left, right) => {
-      const installed = Number(right.availability === 'available') - Number(left.availability === 'available');
+      const installed = Number(right.model.availability === 'available') - Number(left.model.availability === 'available');
       if (installed !== 0) return installed;
-      const avoidsNvfp4 = Number(!right.tags.includes('nvfp4')) - Number(!left.tags.includes('nvfp4'));
-      return avoidsNvfp4 !== 0 ? avoidsNvfp4 : left.label.localeCompare(right.label);
-    })[0];
-  if (!model) return {targetId: target.targetId, label: target.label, discovered: false, installed: false};
-  const profile = catalog.acceleratorProfiles.find((candidate) => (
-    model.profileDirectories.includes(candidate.directory)
-    && target.profileTags.some((tag) => candidate.tags.includes(tag))
-  ));
+      const rightModelCarriesTarget = (target.combinedTags ?? []).every((tag) => right.model.tags.includes(tag));
+      const leftModelCarriesTarget = (target.combinedTags ?? []).every((tag) => left.model.tags.includes(tag));
+      const modelCarriesTarget = Number(rightModelCarriesTarget) - Number(leftModelCarriesTarget);
+      if (modelCarriesTarget !== 0) return modelCarriesTarget;
+      const redundantProfile = Number(left.profile !== undefined) - Number(right.profile !== undefined);
+      if (leftModelCarriesTarget && redundantProfile !== 0) return redundantProfile;
+      const specialization = benchmarkModelSpecializationCount(left.model, target.modelTags)
+        - benchmarkModelSpecializationCount(right.model, target.modelTags);
+      if (specialization !== 0) return specialization;
+      const quantized = Number(right.model.quantization.some((value) => value === 'int8' || value === 'gguf'))
+        - Number(left.model.quantization.some((value) => value === 'int8' || value === 'gguf'));
+      return quantized !== 0 ? quantized : left.model.label.localeCompare(right.model.label);
+    });
+  const selected = options[0];
+  if (!selected) return {targetId: target.targetId, label: target.label, discovered: false, installed: false};
+  const {model, profile} = selected;
   return {
     targetId: target.targetId,
     label: target.label,

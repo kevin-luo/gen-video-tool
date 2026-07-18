@@ -65,7 +65,7 @@ export function HomeScreen({busy, error, onImport, onOpenProject}: HomeScreenPro
           <div className="home-intro__copy">
             <p className="eyebrow">Gen Video v3 · 本地制作</p>
             <h1 id="home-title">从资产包到成片，<br />都留在你的电脑里</h1>
-            <p>导入网页版 ChatGPT 生成的结构化资产包，在本机完成 WanGP 画面生成、候选审片、F5-TTS 旁白和 Remotion 合成。</p>
+            <p>从 Codex / ChatGPT 对话生成并下载结构化资产包，再导入本机完成 WanGP 画面生成、候选审片、F5-TTS 旁白和 Remotion 合成。</p>
             <div className="home-intro__action">
               <button type="button" className="button button--primary button--large" onClick={onImport} disabled={busy}>
                 <Upload size={17} /> 选择 ZIP 或项目目录
@@ -113,7 +113,7 @@ export function HomeScreen({busy, error, onImport, onOpenProject}: HomeScreenPro
           {!filtered.length ? (
             <div className="project-empty">
               <HardDrive size={24} />
-              <div><strong>{query ? '没有匹配的本地项目' : '还没有本地项目'}</strong><small>{query ? '换一个关键词，或导入新的资产包。' : '从 ChatGPT 资产包开始第一条视频。'}</small></div>
+              <div><strong>{query ? '没有匹配的本地项目' : '还没有本地项目'}</strong><small>{query ? '换一个关键词，或导入新的资产包。' : '从 Codex / ChatGPT 资产包开始第一条视频。'}</small></div>
               {!query ? <button type="button" className="button button--quiet" onClick={onImport}><Upload size={15} /> 导入第一个资产包</button> : null}
             </div>
           ) : null}

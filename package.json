@@ -20,6 +20,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:desktop-startup": "node scripts/electron-startup-smoke.mjs",
+    "benchmark:wangp:desktop": "node scripts/electron-wangp-benchmark.mjs",
     "validate:production": "tsx scripts/validate-production.ts",
     "verify:asset-pack": "tsx scripts/verify-asset-pack-roundtrip.ts",
     "narrate:production": "tsx scripts/synthesize-production.ts",

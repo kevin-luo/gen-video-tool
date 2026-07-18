@@ -56,6 +56,7 @@ import {
   type ProductionState,
   type VideoGenerationJob,
   type VideoGenerationPreset,
+  type WanGPBenchmarkTargetSelection,
   type WanGPMcpClient,
 } from '../../../../packages/video-generation/src/index.js';
 import type {
@@ -441,7 +442,10 @@ const createProductionProvider = async (context: ProductionContext): Promise<Man
       process.env.WANGP_CACHE_ROOT?.trim() || path.join(workspaceRoot(), '..', '.cache', 'wangp'),
     );
     const rawOutputDirectory = path.join(context.registration.root, 'generated', 'wangp-raw');
-    await fs.mkdir(rawOutputDirectory, {recursive: true});
+    await Promise.all([
+      fs.mkdir(rawOutputDirectory, {recursive: true}),
+      fs.mkdir(cacheRoot, {recursive: true}),
+    ]);
     transport = new WanGPMcpTransport({
       kind: 'stdio',
       wanGpDirectory: root,
@@ -693,6 +697,26 @@ const writeWanGPBenchmarkReport = async (
   );
 };
 
+const benchmarkResultState = (
+  entry?: WanGPBenchmarkEntry,
+  target?: WanGPBenchmarkTargetSelection,
+): Pick<WanGPBenchmarkEntry, 'status'> & Partial<Pick<WanGPBenchmarkEntry, 'relativePath' | 'metrics' | 'error'>> => (
+  entry === undefined || (
+    target !== undefined
+    && (
+      entry.modelRuntimeId !== target.modelRuntimeId
+      || entry.acceleratorProfileId !== target.acceleratorProfileId
+    )
+  )
+    ? {status: 'not-run'}
+    : {
+      status: entry.status,
+      ...(entry.relativePath === undefined ? {} : {relativePath: entry.relativePath}),
+      ...(entry.metrics === undefined ? {} : {metrics: entry.metrics}),
+      ...(entry.error === undefined ? {} : {error: entry.error}),
+    }
+);
+
 const buildWanGPBenchmarkSnapshot = async (
   projectIdValue: unknown,
   knownContext?: ProductionContext,
@@ -719,8 +743,8 @@ const buildWanGPBenchmarkSnapshot = async (
     }
     const interrupted = persisted && ['queued', 'running', 'normalizing'].includes(persisted.status) && !active;
     return {
+      ...benchmarkResultState(persisted, target),
       ...target,
-      ...(persisted ?? {status: 'not-run' as const}),
       ...(interrupted ? {status: 'failed' as const, error: '上次基准测试在完成前中断。'} : {}),
       ...(outputUrl === undefined ? {} : {outputUrl}),
     };
@@ -761,8 +785,8 @@ const updateWanGPBenchmarkEntry = async (
   if (!catalog) throw new Error('WANGP_CAPABILITY_CATALOG_NOT_READY');
   const previous = await readWanGPBenchmarkReport(context);
   const entries: WanGPBenchmarkEntry[] = resolveWanGPBenchmarkTargets(catalog).map((target) => ({
+    ...benchmarkResultState(previous?.entries.find((entry) => entry.targetId === target.targetId), target),
     ...target,
-    ...(previous?.entries.find((entry) => entry.targetId === target.targetId) ?? {status: 'not-run' as const}),
   }));
   const index = entries.findIndex((entry) => entry.targetId === targetId);
   if (index < 0) throw new Error('WANGP_BENCHMARK_TARGET_NOT_DISCOVERED');
@@ -817,26 +841,41 @@ const refreshWanGPBenchmarkContactSheet = async (
   if (completed.length === 0) return;
   const temporaryDirectory = await fs.mkdtemp(path.join(os.tmpdir(), 'gen-video-wangp-benchmark-'));
   try {
+    const sampleTimes = ['0.25', '1.00', '1.75'];
+    const frameWidth = 180;
+    const frameHeight = 312;
+    const panelWidth = frameWidth * sampleTimes.length;
+    const labelHeight = 68;
+    const panelHeight = frameHeight + labelHeight;
     const cells = await Promise.all(completed.map(async (entry, index) => {
-      const framePath = path.join(temporaryDirectory, `${index}.png`);
-      await runBenchmarkFfmpeg([
-        '-hide_banner', '-loglevel', 'error', '-y', '-ss', '1.0',
-        '-i', resolveProjectAsset(context.registration.root, entry.relativePath!),
-        '-frames:v', '1', framePath,
-      ]);
+      const framePaths = await Promise.all(sampleTimes.map(async (sampleTime, sampleIndex) => {
+        const framePath = path.join(temporaryDirectory, `${index}-${sampleIndex}.png`);
+        await runBenchmarkFfmpeg([
+          '-hide_banner', '-loglevel', 'error', '-y', '-ss', sampleTime,
+          '-i', resolveProjectAsset(context.registration.root, entry.relativePath!),
+          '-frames:v', '1', framePath,
+        ]);
+        return framePath;
+      }));
       const label = `${entry.label} · ${entry.metrics?.totalMs ? `${(entry.metrics.totalMs / 1_000).toFixed(1)}s` : '—'}`;
-      const overlay = Buffer.from(`<svg width="360" height="68" xmlns="http://www.w3.org/2000/svg"><rect width="360" height="68" fill="rgba(0,0,0,.78)"/><text x="14" y="27" fill="white" font-family="Arial" font-size="17" font-weight="700">${label.replaceAll('&', '&amp;').replaceAll('<', '&lt;')}</text><text x="14" y="51" fill="#d4d4d8" font-family="Arial" font-size="13">同一首帧 · 1 个候选 · Seed 940001</text></svg>`);
-      return sharp(framePath)
-        .resize(360, 624, {fit: 'cover'})
-        .composite([{input: overlay, left: 0, top: 556}])
+      const overlay = Buffer.from(`<svg width="${panelWidth}" height="${labelHeight}" xmlns="http://www.w3.org/2000/svg"><rect width="${panelWidth}" height="${labelHeight}" fill="rgba(0,0,0,.82)"/><text x="14" y="27" fill="white" font-family="Arial" font-size="17" font-weight="700">${label.replaceAll('&', '&amp;').replaceAll('<', '&lt;')}</text><text x="14" y="51" fill="#d4d4d8" font-family="Arial" font-size="13">同一首帧 · 0.25 / 1.00 / 1.75 秒 · Seed 940001</text></svg>`);
+      const frames = await Promise.all(framePaths.map((framePath) => sharp(framePath)
+        .resize(frameWidth, frameHeight, {fit: 'cover'})
+        .png()
+        .toBuffer()));
+      return sharp({create: {width: panelWidth, height: panelHeight, channels: 3, background: '#111315'}})
+        .composite([
+          ...frames.map((input, frameIndex) => ({input, left: frameIndex * frameWidth, top: 0})),
+          {input: overlay, left: 0, top: frameHeight},
+        ])
         .jpeg({quality: 90})
         .toBuffer();
     }));
     const columns = 2;
     const rows = Math.ceil(cells.length / columns);
     const destination = path.join(benchmarkDirectory(context), 'contact-sheet.jpg');
-    await sharp({create: {width: columns * 360, height: rows * 624, channels: 3, background: '#111315'}})
-      .composite(cells.map((input, index) => ({input, left: index % columns * 360, top: Math.floor(index / columns) * 624})))
+    await sharp({create: {width: columns * panelWidth, height: rows * panelHeight, channels: 3, background: '#111315'}})
+      .composite(cells.map((input, index) => ({input, left: index % columns * panelWidth, top: Math.floor(index / columns) * panelHeight})))
       .jpeg({quality: 90})
       .toFile(destination);
     report.contactSheetRelativePath = path.relative(context.registration.root, destination).split(path.sep).join('/');

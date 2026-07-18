@@ -1,6 +1,6 @@
 # Gen Video Tool
 
-Gen Video Tool 是一套全新的、本地优先的视频生产桌面工具。ChatGPT/Imagegen 负责可移植的源资产包，本机 WanGP 负责连续人物与环境表演，Remotion 负责确定性道具、遮挡、统一运镜和交付合成，F5-TTS 负责本地旁白，FFmpeg 负责媒体规范化与抽帧验收。
+Gen Video Tool 是一套全新的、本地优先的视频生产桌面工具。Codex/ChatGPT 对话中的 Imagegen 负责生成可下载的便携源资产包，用户把 ZIP 或目录保存到本机后导入；本机 WanGP 负责连续人物与环境表演，Remotion 负责确定性道具、遮挡、统一运镜和交付合成，F5-TTS 负责本地旁白，FFmpeg 负责媒体规范化与抽帧验收。桌面工具不内置云端资产生成接口。
 
 项目从 v3 契约起步，不读取旧 manifest、分镜 JSON 或 v2 项目，也不提供迁移兼容层。产品原则见 [`docs/CONTINUITY_CHARTER.md`](docs/CONTINUITY_CHARTER.md)：镜头必须是连续世界，方向先于生成，物理是门禁，模型生成表演底片，编辑器拥有最终影片。
 
@@ -140,6 +140,22 @@ $env:WANGP_MCP_URL = 'http://127.0.0.1:7866/mcp'
 Provider 通过 `wangp_list_models`、模型 availability、metadata、defaults 和 schema 发现真实能力；它不猜测 Gradio 或私有 REST 接口。只有模型明确支持尾帧时才提交 start/end conditioning。
 
 WanGP HTTP 传输在底层也只接受 `localhost`、`127.0.0.1` 或 `::1`。stdio 子进程强制 Hugging Face、Transformers、Datasets 与 W&B 离线模式；缺少权重会明确报告 `missing`，不会静默下载。当前机器已在该离线策略下探测到 WanGP `1.10.1`、`fun_inp_1.3B`、PyTorch `2.10.0+cu130`、CUDA `13.0` 与 RTX 3060 Ti。
+
+模型安装是独立的联网阶段，生成阶段仍保持 `offline-only`。对于 WanGP 动态目录返回的大文件 URL，可用仓库的续传器下载到临时位置，再按 WanGP 元数据给出的目录安装；Hugging Face URL 会在可用时自动走 `huggingface_hub + hf_xet` 内容寻址链路，其他服务器才使用并行 Range。下载器最终按显式 SHA-256 或 Hugging Face 官方 LFS SHA-256 校验，不能把部分文件或 Xet CDN ETag 当作已安装模型：
+
+```powershell
+python scripts\resumable-range-download.py <WanGP 元数据中的 HTTPS URL> <临时输出文件> `
+  --workers 8 --segment-mib 64 --retries 50
+```
+
+真实同首帧基准通过桌面后端逐条运行，每次只生成一个固定 Seed 候选；`snapshot` 只检查动态目标解析，不触发生成：
+
+```powershell
+npm run benchmark:wangp:desktop -- examples/cat-noodle-stall-v3 snapshot
+npm run benchmark:wangp:desktop -- examples/cat-noodle-stall-v3 fastwan-5b
+```
+
+RTX 3060 Ti 的同首帧结果、三联抽帧判断和最终默认档位见 [`docs/LOCAL_MODEL_BENCHMARK.md`](docs/LOCAL_MODEL_BENCHMARK.md)。当前默认方案是 FastWan 2.2 5B 3-step；桌面端会把所有 Hugging Face、Triton、TorchInductor 与 CUDA 编译缓存收口到 `WANGP_CACHE_ROOT`。
 
 ### F5-TTS
 

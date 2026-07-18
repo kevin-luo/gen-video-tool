@@ -126,7 +126,10 @@ export function ProductionPanel({projectId, initialShotId, readOnly, onClose}: P
   useEffect(() => {
     if (!catalog?.tiers.length) return;
     const current = catalog.tiers.find((tier) => tier.configurationId === configurationId && tier.available);
-    const tier = current ?? catalog.tiers.find((candidate) => candidate.available) ?? catalog.tiers[0];
+    const tier = current
+      ?? catalog.tiers.find((candidate) => candidate.tier === 'balanced-local' && candidate.available)
+      ?? catalog.tiers.find((candidate) => candidate.available)
+      ?? catalog.tiers[0];
     if (!tier) return;
     setConfigurationId(tier.configurationId);
     setModelRuntimeId(tier.modelRuntimeId);
@@ -359,7 +362,7 @@ export function ProductionPanel({projectId, initialShotId, readOnly, onClose}: P
                     >
                       {catalog.tiers.map((tier) => (
                         <option key={tier.configurationId} value={tier.configurationId} disabled={!tier.available}>
-                          {tier.tier} · {tier.modelLabel} · {tier.steps} 步
+                          {tier.tier === 'balanced-local' ? '推荐 · 速度画质平衡' : tier.tier === 'ultra-preview' ? '低内存回退' : '质量优先'} · {tier.modelLabel} · {tier.steps} 步
                         </option>
                       ))}
                     </select>

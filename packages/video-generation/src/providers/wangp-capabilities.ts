@@ -145,14 +145,14 @@ const deriveTags = (value: unknown): string[] => {
   add('distilled', /distill|lightning|fastwan|self\s*forcing|fusionix|fusionx/);
   add('two-step', /2\s*steps?|two\s*steps?/);
   add('four-step', /4\s*steps?|four\s*steps?/);
-  add('five-billion', /\b5\s*b\b|5b/);
-  add('one-point-three-billion', /1[.]?3\s*b|1[.]?3b/);
-  add('fourteen-billion', /\b14\s*b\b|14b/);
+  add('five-billion', /\b5\s*b\b|\b5b\b/);
+  add('one-point-three-billion', /\b1[.]3\s*b\b|\b1[.]3b\b/);
+  add('fourteen-billion', /\b14\s*b\b|\b14b\b/);
   add('nvfp4', /nvfp4/);
   add('int8', /int8|quanto[_ -]?int8/);
   add('gguf', /gguf/);
-  add('fp8', /\bfp8\b/);
-  add('bf16', /\bbf16\b/);
+  add('fp8', /fp8/);
+  add('bf16', /bf16/);
   return unique(tags);
 };
 
@@ -244,9 +244,17 @@ export const buildWanGPModelCapability = (input: {
     modelDefName: modelDef.name ?? modelDef.label ?? modelDef.description,
   });
   const operationalTags = deriveTags(textSource).filter((tagName) => [
-    'distilled', 'two-step', 'four-step', 'nvfp4', 'int8', 'gguf', 'fp8', 'bf16',
+    'distilled', 'two-step', 'four-step',
   ].includes(tagName));
-  const tags = unique([...identityTags, ...operationalTags]);
+  const checkpointQuantization = quantizationFrom({
+    URLs: modelDef.URLs,
+    URLs2: modelDef.URLs2,
+    modules: modelDef.modules,
+  });
+  const quantization = checkpointQuantization.length > 0
+    ? checkpointQuantization
+    : quantizationFrom(textSource);
+  const tags = unique([...identityTags, ...operationalTags, ...quantization]);
   const defaultSteps = asPositiveInteger(defaultSettings.num_inference_steps)
     ?? asPositiveInteger(modelSettings.num_inference_steps);
   const defaultGuidance = asFiniteNumber(defaultSettings.guidance_scale)
@@ -270,7 +278,7 @@ export const buildWanGPModelCapability = (input: {
     ...(frameStep === undefined ? {} : {frameStep}),
     ...(defaultSteps === undefined ? {} : {defaultSteps}),
     ...(defaultGuidance === undefined ? {} : {defaultGuidance}),
-    quantization: quantizationFrom(textSource),
+    quantization,
     cache: {tea: modelDef.tea_cache === true, mag: modelDef.mag_cache === true},
     raw: {...raw},
     schema: {...schema},
@@ -309,14 +317,31 @@ export const buildWanGPAcceleratorProfile = (
 const profileCompatible = (
   model: WanGPModelCapability,
   profile: WanGPAcceleratorProfile,
-): boolean => model.profileDirectories.includes(profile.directory);
+): boolean => {
+  if (!model.profileDirectories.includes(profile.directory)) return false;
+  const parameterTags = ['one-point-three-billion', 'five-billion', 'fourteen-billion'];
+  const modelScale = parameterTags.filter((parameterTag) => model.tags.includes(parameterTag));
+  const profileScale = parameterTags.filter((parameterTag) => profile.tags.includes(parameterTag));
+  return modelScale.length === 0
+    || profileScale.length === 0
+    || modelScale.some((parameterTag) => profileScale.includes(parameterTag));
+};
 
 const tag = (value: {tags: string[]}, name: string): boolean => value.tags.includes(name);
+
+const profileDuplicatesModelFinetune = (
+  model: WanGPModelCapability,
+  profile: WanGPAcceleratorProfile,
+): boolean => ['fastwan', 'lightning', 'lightx2v', 'self-forcing', 'fusionix']
+  .some((family) => tag(model, family) && tag(profile, family));
 
 const availabilityScore = (availability: WanGPAvailability): number =>
   availability === 'available' ? 45 : availability === 'partial' ? 20 : availability === 'unknown' ? 5 : 0;
 
-const modelIsRtx30Compatible = (model: WanGPModelCapability): boolean => !tag(model, 'nvfp4');
+const modelIsRtx30Compatible = (model: WanGPModelCapability): boolean => (
+  !tag(model, 'nvfp4')
+  && !tag(model, 'fp8')
+);
 
 type ModelProfileOption = {model: WanGPModelCapability; profile?: WanGPAcceleratorProfile};
 
@@ -359,6 +384,7 @@ const optionPriority = (option: ModelProfileOption, tier: WanGPLocalTier): numbe
     return 1;
   }
   if (tier === 'balanced-local') {
+    if (tag(model, 'fastwan') && tag(model, 'five-billion')) return 5;
     if (has('fastwan') && tag(model, 'five-billion')) return 4;
     if (has('fastwan')) return 3;
     if (tag(model, 'wan-2.2') && tag(model, 'five-billion')) return 2;
@@ -407,7 +433,7 @@ export const resolveWanGPCachePolicy = (input: {
 
 const tierReason = (tier: WanGPLocalTier, option: ModelProfileOption): string => {
   const profile = option.profile ? ` + ${option.profile.label}` : '';
-  if (tier === 'ultra-preview') return `Fastest compatible I2V metadata match: ${option.model.label}${profile}.`;
+  if (tier === 'ultra-preview') return `Lowest-parameter compatible I2V fallback: ${option.model.label}${profile}.`;
   if (tier === 'balanced-local') return `RTX 30 balanced metadata match: ${option.model.label}${profile}.`;
   return `Highest-priority distilled quality metadata match: ${option.model.label}${profile}.`;
 };
@@ -427,11 +453,25 @@ export const resolveWanGPLocalTiers = (
   const options: ModelProfileOption[] = [];
   for (const model of models) {
     options.push({model});
-    for (const profile of profiles) if (profileCompatible(model, profile)) options.push({model, profile});
+    for (const profile of profiles) {
+      if (profileCompatible(model, profile) && !profileDuplicatesModelFinetune(model, profile)) {
+        options.push({model, profile});
+      }
+    }
   }
   return (['ultra-preview', 'balanced-local', 'quality-local'] as const).flatMap((tier) => {
     const chosen = [...options].sort((left, right) => {
-      const priority = optionPriority(right, tier) - optionPriority(left, tier);
+      const leftPriority = optionPriority(left, tier);
+      const rightPriority = optionPriority(right, tier);
+      // An installed tier-specific accelerator is more useful than a marginally
+      // stronger metadata match whose weights are absent. Generic installed
+      // models (priority 1) must not mask a real tier candidate that can be
+      // prepared during the explicit online installation stage.
+      const installedTierMatch = Number(
+        rightPriority > 1 && right.model.availability === 'available',
+      ) - Number(leftPriority > 1 && left.model.availability === 'available');
+      if (installedTierMatch !== 0) return installedTierMatch;
+      const priority = rightPriority - leftPriority;
       return priority !== 0 ? priority : optionScore(right, tier) - optionScore(left, tier);
     })[0];
     if (!chosen || !Number.isFinite(optionScore(chosen, tier))) return [];

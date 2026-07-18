@@ -33,6 +33,10 @@ describe('WanGP transport local-only boundary', () => {
     expect(environment).toMatchObject({
       PATH: 'local-bin',
       HF_HOME: path.resolve('F:\\model-cache\\wangp'),
+      TRITON_CACHE_DIR: path.resolve('F:\\model-cache\\wangp', 'triton'),
+      TORCHINDUCTOR_CACHE_DIR: path.resolve('F:\\model-cache\\wangp', 'torchinductor'),
+      CUDA_CACHE_PATH: path.resolve('F:\\model-cache\\wangp', 'cuda'),
+      XDG_CACHE_HOME: path.resolve('F:\\model-cache\\wangp', 'xdg'),
       HF_HUB_OFFLINE: '1',
       TRANSFORMERS_OFFLINE: '1',
       HF_DATASETS_OFFLINE: '1',
