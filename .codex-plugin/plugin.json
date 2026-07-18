@@ -1,6 +1,6 @@
 {
   "name": "gen-video-tool",
-  "version": "0.1.0",
+  "version": "0.1.0+codex.20260718111728",
   "description": "A local-first Codex video studio with conversational asset generation, WanGP production, F5-TTS narration, candidate review, and deterministic rendering.",
   "author": {
     "name": "Kevin Luo",
@@ -9,7 +9,14 @@
   "homepage": "https://github.com/kevin-luo/gen-video-tool",
   "repository": "https://github.com/kevin-luo/gen-video-tool",
   "license": "MIT",
-  "keywords": ["video", "codex", "mcp", "imagegen", "wangp", "remotion"],
+  "keywords": [
+    "video",
+    "codex",
+    "mcp",
+    "imagegen",
+    "wangp",
+    "remotion"
+  ],
   "skills": "./skills/",
   "mcpServers": "./.mcp.json",
   "interface": {
@@ -20,11 +27,17 @@
     "category": "Creativity",
     "websiteURL": "https://github.com/kevin-luo/gen-video-tool",
     "brandColor": "#B93B2F",
-    "capabilities": ["Create asset packs", "Run local video generation", "Review candidates", "Generate narration", "Render MP4 and SRT"],
+    "capabilities": [
+      "Create asset packs",
+      "Run local video generation",
+      "Review candidates",
+      "Generate narration",
+      "Render MP4 and SRT"
+    ],
     "defaultPrompt": [
-      "启动 Gen Video Tool，并告诉我本地制作台地址",
-      "按我们的工作流做一条 20 秒竖屏视频",
-      "检查当前视频项目并继续下一步"
+      "\u542f\u52a8 Gen Video Tool\uff0c\u5e76\u544a\u8bc9\u6211\u672c\u5730\u5236\u4f5c\u53f0\u5730\u5740",
+      "\u6309\u6211\u4eec\u7684\u5de5\u4f5c\u6d41\u505a\u4e00\u6761 20 \u79d2\u7ad6\u5c4f\u89c6\u9891",
+      "\u68c0\u67e5\u5f53\u524d\u89c6\u9891\u9879\u76ee\u5e76\u7ee7\u7eed\u4e0b\u4e00\u6b65"
     ]
   }
 }

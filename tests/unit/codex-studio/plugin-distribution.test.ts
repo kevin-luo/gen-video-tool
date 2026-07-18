@@ -27,4 +27,10 @@ describe('Codex plugin distribution', () => {
       expect(fs.readFileSync(path.join(root, relativePath), 'utf8')).not.toContain('[TODO:');
     }
   });
+
+  it('uses an in-page review dialog instead of unsupported browser prompts', () => {
+    const studioScript = fs.readFileSync(path.join(root, 'apps/codex-studio/web/studio.js'), 'utf8');
+    expect(studioScript).not.toContain('window.prompt');
+    expect(studioScript).toContain("elements['review-dialog'].showModal()");
+  });
 });

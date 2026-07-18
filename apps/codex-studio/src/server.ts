@@ -157,7 +157,16 @@ export const createStudioApp = async (config = createStudioConfig()) => {
       ? projects.resolveProjectMedia(input.projectId, input.path)
       : projects.resolveOutputMedia(input.projectId, input.path);
     await fs.access(mediaPath);
-    response.sendFile(mediaPath);
+    await new Promise<void>((resolve, reject) => {
+      response.sendFile(mediaPath, {
+        acceptRanges: true,
+        cacheControl: false,
+        dotfiles: 'allow',
+      }, (error) => {
+        if (error) reject(error);
+        else resolve();
+      });
+    });
   }));
 
   app.get('/tokens.css', (_request, response) => response.sendFile(path.join(config.repositoryRoot, 'apps/desktop/src/renderer/styles/tokens.css')));

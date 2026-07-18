@@ -89,6 +89,19 @@
         </aside>
       </main>
     </div>
+    <dialog class="review-dialog" id="review-dialog" aria-labelledby="review-title">
+      <form id="review-form">
+        <p class="kicker">Human review</p>
+        <h2 id="review-title">记录审片决定</h2>
+        <p id="review-copy">请记录画面中实际可见的判断依据。</p>
+        <label for="review-notes">审片备注</label>
+        <textarea id="review-notes" rows="4" maxlength="4000"></textarea>
+        <div class="review-actions">
+          <button class="button button-secondary" id="review-cancel" type="button">取消</button>
+          <button class="button button-primary" id="review-submit" type="submit">提交决定</button>
+        </div>
+      </form>
+    </dialog>
     <div class="sr-status" id="live-status" role="status" aria-live="polite"></div>
     <script src="/studio.js" defer></script>
   </body>

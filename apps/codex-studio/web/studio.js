@@ -2,11 +2,12 @@
   'use strict';
 
   const session = new URLSearchParams(window.location.search).get('session') || '';
-  const state = {projects: [], jobs: [], project: null, selectedProjectId: null, preview: null};
+  const state = {projects: [], jobs: [], project: null, selectedProjectId: null, preview: null, pendingReview: null};
   const elements = Object.fromEntries([
     'connection-label', 'project-count', 'project-list', 'project-title', 'project-meta', 'production-ribbon',
     'stage', 'preview-label', 'shot-summary', 'shot-list', 'delivery-reason', 'detect-runtime',
     'start-narration', 'start-render', 'active-job-count', 'job-list', 'live-status',
+    'review-dialog', 'review-form', 'review-title', 'review-copy', 'review-notes', 'review-cancel', 'review-submit',
   ].map((id) => [id, document.getElementById(id)]));
 
   const escapeHtml = (value) => String(value ?? '')
@@ -216,6 +217,25 @@
     await refresh(true);
   };
 
+  const openReviewDialog = (target) => {
+    const rejecting = target.dataset.review === 'reject';
+    state.pendingReview = {
+      decision: target.dataset.review,
+      shotId: target.dataset.shot,
+      candidateId: target.dataset.candidate,
+    };
+    elements['review-title'].textContent = rejecting ? '拒绝这个候选' : '通过并选择候选';
+    elements['review-copy'].textContent = rejecting
+      ? '写下具体可见的问题，例如方向错误、脚底滑动、手与物体没有接触或身份漂移。'
+      : '确认方向、支撑、接触、身份与镜头稳定性都符合要求；备注可以留空。';
+    elements['review-notes'].value = '';
+    elements['review-notes'].required = rejecting;
+    elements['review-notes'].placeholder = rejecting ? '必须填写具体拒绝原因' : '可选：记录通过理由';
+    elements['review-submit'].textContent = rejecting ? '确认拒绝' : '确认通过';
+    elements['review-dialog'].showModal();
+    elements['review-notes'].focus();
+  };
+
   document.addEventListener('click', async (event) => {
     const target = event.target.closest('button');
     if (!target) return;
@@ -225,12 +245,8 @@
       if (target.dataset.generate) await postAndRefresh(`/api/projects/${encodeURIComponent(currentProjectId())}/shots/${encodeURIComponent(target.dataset.generate)}/generate`);
       if (target.dataset.cancel) await postAndRefresh(`/api/jobs/${encodeURIComponent(target.dataset.cancel)}/cancel`);
       if (target.dataset.review) {
-        const notes = target.dataset.review === 'reject'
-          ? window.prompt('写下可见的拒绝原因，例如“右脚滑动且没有踩稳地面”')
-          : window.prompt('可选：记录通过理由或审片备注', '方向、支撑与接触均正确');
-        if (target.dataset.review === 'reject' && !notes?.trim()) return;
-        await postAndRefresh(`/api/projects/${encodeURIComponent(currentProjectId())}/shots/${encodeURIComponent(target.dataset.shot)}/candidates/${encodeURIComponent(target.dataset.candidate)}/${target.dataset.review}`, notes?.trim() ? {notes: notes.trim()} : {});
-        state.preview = null;
+        openReviewDialog(target);
+        return;
       }
     } catch (error) {
       announce(`操作失败：${error.message}`);
@@ -238,6 +254,28 @@
   });
 
   document.getElementById('refresh').addEventListener('click', () => refresh().catch((error) => announce(`刷新失败：${error.message}`)));
+  elements['review-cancel'].addEventListener('click', () => elements['review-dialog'].close());
+  elements['review-dialog'].addEventListener('close', () => { state.pendingReview = null; });
+  elements['review-form'].addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const pending = state.pendingReview;
+    if (!pending) return;
+    const notes = elements['review-notes'].value.trim();
+    if (pending.decision === 'reject' && !notes) {
+      elements['review-notes'].setCustomValidity('请填写画面中实际可见的拒绝原因。');
+      elements['review-notes'].reportValidity();
+      return;
+    }
+    elements['review-notes'].setCustomValidity('');
+    try {
+      state.preview = null;
+      await postAndRefresh(`/api/projects/${encodeURIComponent(currentProjectId())}/shots/${encodeURIComponent(pending.shotId)}/candidates/${encodeURIComponent(pending.candidateId)}/${pending.decision}`, notes ? {notes} : {});
+      elements['review-dialog'].close();
+      announce(pending.decision === 'reject' ? '已记录拒绝原因。' : '候选已通过并选择。');
+    } catch (error) {
+      announce(`审片提交失败：${error.message}`);
+    }
+  });
   elements['detect-runtime'].addEventListener('click', () => postAndRefresh(`/api/projects/${encodeURIComponent(currentProjectId())}/detect`).catch((error) => announce(error.message)));
   elements['start-narration'].addEventListener('click', () => postAndRefresh(`/api/projects/${encodeURIComponent(currentProjectId())}/narrate`).catch((error) => announce(error.message)));
   elements['start-render'].addEventListener('click', () => postAndRefresh(`/api/projects/${encodeURIComponent(currentProjectId())}/render`).catch((error) => announce(error.message)));
