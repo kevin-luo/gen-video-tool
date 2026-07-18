@@ -1,12 +1,12 @@
 # Gen Video Tool
 
-Gen Video Tool 是一套全新的、本地优先的视频生产桌面工具。Codex/ChatGPT 对话中的 Imagegen 负责生成可下载的便携源资产包，用户把 ZIP 或目录保存到本机后导入；本机 WanGP 负责连续人物与环境表演，Remotion 负责确定性道具、遮挡、统一运镜和交付合成，F5-TTS 负责本地旁白，FFmpeg 负责媒体规范化与抽帧验收。桌面工具不内置云端资产生成接口。
+Gen Video Tool 是一套全新的、本地优先的视频生产工具。它既可作为 Electron 桌面应用运行，也可安装成 Codex 插件：在对话中用 Codex 内置 Imagegen 生成便携源资产包，通过本地 MCP 原子导入，再在 `127.0.0.1` 制作台观察 WanGP 连续表演、人工审片、F5-TTS 旁白、Remotion 合成和 FFmpeg 验收。工具不读取 ChatGPT Cookie、订阅令牌，也不内置云端资产生成 API。
 
 项目从 v3 契约起步，不读取旧 manifest、分镜 JSON 或 v2 项目，也不提供迁移兼容层。产品原则见 [`docs/CONTINUITY_CHARTER.md`](docs/CONTINUITY_CHARTER.md)：镜头必须是连续世界，方向先于生成，物理是门禁，模型生成表演底片，编辑器拥有最终影片。
 
 ## 当前进度
 
-状态以 2026-07-17 的本地证据为准。
+状态以 2026-07-18 的本地证据为准。
 
 | 能力 | 当前状态 | 已验证边界 |
 | --- | --- | --- |
@@ -17,6 +17,7 @@ Gen Video Tool 是一套全新的、本地优先的视频生产桌面工具。Co
 | F5-TTS | 真实本地 WAV 已验证 | 参考音频克隆、分段合成、合并、时长检查和外挂 SRT；v3 项目必须先选定视频才能生成旁白 |
 | Electron 工作流 | 已完成真实端到端验收 | 导入 → 生成 → 审片 → F5-TTS → 动态预览 → 导出；真实桌面导出得到 MP4、SRT 与 20 张 QA 抽帧 |
 | Web Skill → ZIP → 桌面 | 已完成真实回合验收 | 新样片目录经 Skill 校验零警告，确定性组装 ZIP，再由桌面同款导入器检查、原子导入并打开 `offline-only` v3 项目；源图和参考 WAV 哈希保持一致 |
+| Codex 插件与浏览器制作台 | 已实现并通过协议/浏览器验收 | 插件启动私有 localhost 制作台和 14 个 MCP 工具；实测从页面触发 WanGP 运行时检测并完成；长任务持久化、去重、可取消，候选仍须人工选择 |
 | 新 v3 样片 | 已完成并通过验收 | [`examples/morning-light-v3`](examples/morning-light-v3/README.md) 与 23.57 秒的 [`examples/cat-noodle-stall-v3`](examples/cat-noodle-stall-v3/README.md) 均已完成双候选、人工拒绝/选择、F5-TTS、Remotion/FFmpeg 交付与抽帧检查 |
 
 ## 已验证样片
@@ -95,6 +96,30 @@ generated/
 ```
 
 源资产包中出现 `generated/` 会被拒绝，避免把旧候选或伪造完成状态带到另一台电脑。
+
+## 在 Codex 中使用
+
+本仓库本身就是可安装的 Codex 插件。安装后，新对话会加载 `$gen-video-studio` 和 `$create-gen-video-asset-pack` 两个 Skill，并通过 MCP 启动同一套本地生产后端：
+
+```bash
+codex plugin marketplace add kevin-luo/gen-video-tool --ref main
+codex plugin add gen-video-tool@gen-video-tool
+```
+
+新建 Codex 任务后可以直接说：
+
+```text
+启动 Gen Video Tool，并告诉我本地制作台地址。
+
+做一条 20 秒竖屏视频：可爱小猫在夜市摆摊卖炒粉。
+先定文案、镜头、方向、支撑与接触逻辑；用内置 Imagegen 生成资产包，
+导入本机后检测 WanGP、逐镜头生成候选并让我审片，最后生成 F5-TTS 旁白，
+交付 MP4 和外挂 SRT，不要 BGM，不要烧录字幕。
+```
+
+插件会返回带临时会话令牌的 `http://127.0.0.1:4390/` 地址。浏览器页面是可观察、可审片的制作台；Codex Skill 负责理解意图和调用工具，本机进程负责模型与渲染。页面只绑定回环地址，API 要求会话令牌和同源请求，外部进程均以参数数组启动且禁用 shell。
+
+对话生成资产包有两条等价路径：插件可直接检查并原子导入本地 ZIP/目录；桌面用户也可手动下载后导入。两条路径共用 [`packages/asset-pack`](packages/asset-pack/) 的验证器，不会绕过 v3 契约。详见 [`docs/CODEX_STUDIO.md`](docs/CODEX_STUDIO.md)。
 
 ## 本地运行
 
@@ -189,6 +214,7 @@ npm run render:production -- <本地工作项目目录> <输出目录>
 ```bash
 npm run typecheck
 npm run test
+npm run test:codex-plugin
 npm run test:desktop-startup
 npm run validate:production -- examples/morning-light-v3
 npm run build:desktop

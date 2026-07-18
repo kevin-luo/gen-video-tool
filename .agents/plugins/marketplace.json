@@ -1,0 +1,21 @@
+{
+  "name": "gen-video-tool",
+  "interface": {
+    "displayName": "Gen Video Tool"
+  },
+  "plugins": [
+    {
+      "name": "gen-video-tool",
+      "source": {
+        "source": "url",
+        "url": "https://github.com/kevin-luo/gen-video-tool.git",
+        "ref": "main"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Creativity"
+    }
+  ]
+}

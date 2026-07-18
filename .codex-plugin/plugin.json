@@ -1,0 +1,30 @@
+{
+  "name": "gen-video-tool",
+  "version": "0.1.0",
+  "description": "A local-first Codex video studio with conversational asset generation, WanGP production, F5-TTS narration, candidate review, and deterministic rendering.",
+  "author": {
+    "name": "Kevin Luo",
+    "url": "https://github.com/kevin-luo"
+  },
+  "homepage": "https://github.com/kevin-luo/gen-video-tool",
+  "repository": "https://github.com/kevin-luo/gen-video-tool",
+  "license": "MIT",
+  "keywords": ["video", "codex", "mcp", "imagegen", "wangp", "remotion"],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "Gen Video Tool",
+    "shortDescription": "Create and run local videos from Codex chat",
+    "longDescription": "Plan a video in conversation, generate a validated source asset pack with Codex Imagegen, run local WanGP and F5-TTS jobs, review candidates in a private browser studio, and render the final MP4 with a sidecar SRT.",
+    "developerName": "Kevin Luo",
+    "category": "Creativity",
+    "websiteURL": "https://github.com/kevin-luo/gen-video-tool",
+    "brandColor": "#B93B2F",
+    "capabilities": ["Create asset packs", "Run local video generation", "Review candidates", "Generate narration", "Render MP4 and SRT"],
+    "defaultPrompt": [
+      "启动 Gen Video Tool，并告诉我本地制作台地址",
+      "按我们的工作流做一条 20 秒竖屏视频",
+      "检查当前视频项目并继续下一步"
+    ]
+  }
+}

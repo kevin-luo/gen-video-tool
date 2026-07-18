@@ -1,0 +1,4 @@
+interface:
+  display_name: "Gen Video Studio"
+  short_description: "Drive local video production from Codex chat"
+  default_prompt: "Use $gen-video-studio to create and run a local video project from this conversation."

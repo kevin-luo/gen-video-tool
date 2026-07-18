@@ -1,6 +1,6 @@
 # Development plan
 
-## 2026-07-17 状态基线
+## 2026-07-18 状态基线
 
 项目已经转为 greenfield v3，不再安排旧格式兼容或迁移器。当前目标是完成一条可以被证据证明的本地闭环：便携源资产包 → WanGP 双候选 → 人工选片 → F5-TTS → Remotion/FFmpeg 交付。
 
@@ -76,6 +76,18 @@
 - 视频选择完成后才解锁旁白，旁白完成后才解锁导出；
 - Renderer 不获得任意文件系统或 shell 权限。
 
+### P4B — Codex 插件与浏览器制作台
+
+状态：实现并完成协议、浏览器与真实本地检测验收。
+
+- 根插件清单、个人 marketplace、两个生产 Skill 与 MCP 自动启动器；
+- 14 个项目、资产包、长任务、人工审片和任务控制工具；
+- 只绑定 `127.0.0.1` 的三栏制作台，实际候选预览、门禁、任务进度和取消均可操作；
+- 高熵临时会话令牌、同源检查、严格 CSP、媒体根目录约束和 shell-free 子进程；
+- 长任务持久化、串行执行、等价任务去重、重启中断恢复和有界日志/结果；
+- 插件协议探针已完成 MCP initialize、14 工具枚举、状态调用、healthz 和页面载入；
+- 浏览器实测从制作台触发 WanGP 本地运行时检测并成功完成，不是静态 UI 演示。
+
 ## 已完成关键路径 — v3 样片验收
 
 状态：完成。
@@ -148,6 +160,7 @@ npm run render:production -- <本地工作项目目录> <输出目录>
 npm run build:desktop
 npm run typecheck
 npm run test
+npm run test:codex-plugin
 npm run test:desktop-startup
 ```
 

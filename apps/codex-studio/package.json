@@ -1,0 +1,10 @@
+{
+  "name": "@gen-video-tool/codex-studio",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "cd ../.. && tsx apps/codex-studio/src/server.ts",
+    "mcp": "cd ../.. && tsx apps/codex-studio/src/mcp.ts"
+  }
+}

@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#f3f1ee" />
+    <title>Gen Video Tool · Codex Studio</title>
+    <link rel="stylesheet" href="/tokens.css" />
+    <link rel="stylesheet" href="/studio.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#main-content">跳到制作区</a>
+    <div class="studio-shell">
+      <header class="topbar">
+        <div class="brand-lockup" aria-label="Gen Video Tool">
+          <span class="brand-mark" aria-hidden="true">GV</span>
+          <span><strong>Gen Video Tool</strong><small>Codex Studio</small></span>
+        </div>
+        <div class="topbar-context">
+          <span class="connection"><i aria-hidden="true"></i><span id="connection-label">连接本地制作链路</span></span>
+          <button class="button button-secondary" id="copy-prompt" type="button">复制对话指令</button>
+          <button class="button button-primary" id="refresh" type="button">刷新状态</button>
+        </div>
+      </header>
+
+      <main id="main-content" class="workspace">
+        <aside class="project-rail" aria-labelledby="projects-title">
+          <div class="rail-heading">
+            <div><h1 id="projects-title">本地项目</h1><p>对话产生计划，本机保存结果。</p></div>
+            <span class="count" id="project-count">0</span>
+          </div>
+          <nav id="project-list" aria-label="视频项目"></nav>
+          <div class="rail-foot">
+            <p>新项目从 Codex 对话生成资产包。制作台不会读取 ChatGPT Cookie 或订阅令牌。</p>
+          </div>
+        </aside>
+
+        <section class="production-surface" aria-labelledby="project-title">
+          <div class="production-head">
+            <div>
+              <p class="kicker">当前制作</p>
+              <h2 id="project-title">等待选择项目</h2>
+              <p id="project-meta">选择左侧项目，或在 Codex 中创建一条新视频。</p>
+            </div>
+            <button class="button button-secondary" id="detect-runtime" type="button" disabled>检测本地模型</button>
+          </div>
+
+          <ol class="production-ribbon" id="production-ribbon" aria-label="视频生产进度">
+            <li data-step="pack"><span>1</span><b>资产包</b><small>等待</small></li>
+            <li data-step="motion"><span>2</span><b>连续画面</b><small>等待</small></li>
+            <li data-step="review"><span>3</span><b>人工审片</b><small>等待</small></li>
+            <li data-step="voice"><span>4</span><b>本地旁白</b><small>等待</small></li>
+            <li data-step="render"><span>5</span><b>成片交付</b><small>等待</small></li>
+          </ol>
+
+          <div class="creative-workbench">
+            <section class="preview-bay" aria-labelledby="preview-title">
+              <div class="section-line"><h3 id="preview-title">审片画面</h3><span id="preview-label">未载入</span></div>
+              <div class="stage" id="stage">
+                <div class="empty-stage"><span aria-hidden="true">9:16</span><p>候选视频和关键帧会在这里出现。</p></div>
+              </div>
+            </section>
+
+            <section class="shot-workflow" aria-labelledby="shots-title">
+              <div class="section-line"><h3 id="shots-title">镜头与候选</h3><span id="shot-summary">0 个镜头</span></div>
+              <div id="shot-list" class="shot-list">
+                <div class="empty-copy">先从左侧选择一个项目。</div>
+              </div>
+            </section>
+          </div>
+
+          <footer class="delivery-actions" id="delivery-actions" aria-label="旁白和渲染操作">
+            <div><strong>交付门禁</strong><span id="delivery-reason">候选审片完成后才会解锁旁白与渲染。</span></div>
+            <div class="button-row">
+              <button class="button button-secondary" id="start-narration" type="button" disabled>生成旁白</button>
+              <button class="button button-primary" id="start-render" type="button" disabled>渲染 MP4</button>
+            </div>
+          </footer>
+        </section>
+
+        <aside class="activity-rail" aria-labelledby="activity-title">
+          <div class="activity-heading">
+            <div><p class="kicker">Local queue</p><h2 id="activity-title">执行记录</h2></div>
+            <span id="active-job-count">0 进行中</span>
+          </div>
+          <div id="job-list" class="job-list">
+            <div class="empty-copy">还没有本地任务。</div>
+          </div>
+        </aside>
+      </main>
+    </div>
+    <div class="sr-status" id="live-status" role="status" aria-live="polite"></div>
+    <script src="/studio.js" defer></script>
+  </body>
+</html>

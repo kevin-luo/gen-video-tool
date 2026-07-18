@@ -21,6 +21,7 @@ select and reject are explicit human review actions.`;
 
 export const runLocalProductionCli = async (argv: readonly string[]): Promise<number> => {
   const [command, projectRootValue, shotId, candidateId, ...rest] = argv;
+  const summaryMode = argv.includes('--summary');
   if (command === undefined || command === 'help' || command === '--help' || command === '-h') {
     console.log(usage);
     return command === undefined ? 1 : 0;
@@ -29,7 +30,23 @@ export const runLocalProductionCli = async (argv: readonly string[]): Promise<nu
   const projectRoot = path.resolve(projectRootValue);
   if (command === 'detect') {
     const result = await detectLocalProductionRuntime(projectRoot);
-    console.log(JSON.stringify(result, null, 2));
+    const output = summaryMode ? {
+      projectId: result.projectId,
+      available: result.available,
+      provider: {
+        available: result.provider.available,
+        ...(result.provider.reason === undefined ? {} : {reason: result.provider.reason}),
+      },
+      transport: result.transport,
+      cudaRuntime: result.cudaRuntime,
+      capability: result.capability,
+      availableModelTypes: result.models
+        .filter((model) => model.availability === 'available')
+        .map((model) => model.modelType),
+      tiers: result.catalog?.tiers ?? [],
+      requestedShots: result.requestedShots,
+    } : result;
+    console.log(JSON.stringify(output, null, 2));
     return result.available ? 0 : 2;
   }
   if (command === 'status') {
